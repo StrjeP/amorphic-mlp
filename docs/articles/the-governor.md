@@ -4,6 +4,13 @@
 
 ![A centrifugal governor drawn inside a feedback loop](images/governor-cover.png)
 
+**TL;DR**
+
+- Systems are never finished, so their shape should be able to change after design time, not only their parts.
+- Progressive delivery already gates new versions on evidence. A governor can use the same evidence to decide where a module runs: folded into its caller, or split out as a service.
+- A small demo shows one turn of that loop, done by hand.
+- *4th bullet as a human at the keyboard ;-)*
+
 Nobody ever finishes a system. Even a system that nobody wants to change will be forced to. A dependency publishes a vulnerability, and code that has been stable for years must be rebuilt and redeployed within days. Log4Shell made that point to most of the industry back in 2021.
 
 Yet we still design systems as if they were finished. We pick a shape at design time, build it, and treat every later change of shape as a project. I think it is time to rethink how we do things. Here are my thoughts.
