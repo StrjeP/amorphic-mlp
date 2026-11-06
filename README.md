@@ -2,6 +2,11 @@
 
 A minimal, runnable demo of an "amorphic" capability. `pricing-calc` starts out as a Python service, gets re-implemented in Java, earns trust through shadow and canary traffic, and is then folded into the calling app. The full plan is in [docs/amorphic-mlp-plan.md](docs/amorphic-mlp-plan.md). For the high-level narrative, see [docs/story.md](docs/story.md).
 
+## Articles
+
+- [What this demo shows](docs/articles/what-this-demo-shows.md): the isomorphic, polymorphic and amorphic framing, with a storyboard of every stage.
+- [The Governor: Letting Evidence Reshape a System](docs/articles/the-governor.md): the wider argument the demo is a first step towards.
+
 ## Layout
 
 | Path | What it is | Tooling |
