@@ -5,7 +5,7 @@ plugins {
 
 // v2.0 has the planted HALF_UP bug; v2.1 fixes it to HALF_EVEN.
 // Keep in step with PricingCalcCore.VERSION.
-version = "2.0"
+version = "2.1"
 
 dependencies {
     // GoldenVectors lives in test fixtures so the service's contract tests can reuse it.

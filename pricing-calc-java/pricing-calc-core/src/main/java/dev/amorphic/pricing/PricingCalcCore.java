@@ -8,10 +8,13 @@ import java.util.Map;
 public final class PricingCalcCore {
 
     /** Version of this implementation, matched against the address's {@code @version}. */
-    public static final String VERSION = "2.0";
+    public static final String VERSION = "2.1";
 
-    /** Rounding applied to every result. */
-    static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
+    /**
+     * Rounding applied to every result: half to even, matching the incumbent Python service.
+     * v2.0 used HALF_UP, which shadow comparison caught on exact half-penny results.
+     */
+    static final RoundingMode ROUNDING = RoundingMode.HALF_EVEN;
 
     private static final Map<String, BigDecimal> RATES = Map.of(
             "GBP:USD", new BigDecimal("1.25"),

@@ -24,10 +24,10 @@ All four live in this monorepo as top-level directories. The three Java projects
 ### 1. `pricing-calc-py`: incumbent Python service
 - Python 3.12, FastAPI, uvicorn. Dockerfile (arm64-friendly).
 - `GET /convert?amount=<decimal string>&from=GBP&to=USD` returns `{"amount": "<decimal string>", "currency": "USD"}`.
-- Uses a fixed in-code rate table (a few currency pairs, with rates chosen to produce exact `.xx5` intermediate values for some inputs).
+- Uses a fixed in-code rate table: GBP→USD 1.25, EUR→USD 1.05, GBP→EUR 1.19. These produce exact `.xx5` intermediate values for some inputs (e.g. 10.02 GBP → 12.525 USD).
 - Uses `decimal.Decimal` and `quantize(Decimal("0.01"))`, which applies the default context rounding, **ROUND_HALF_EVEN** (banker's rounding). This is the behaviour the Java port must match.
 - `GET /health`.
-- Unit tests that include the `.xx5` edge cases.
+- Unit tests that include the `.xx5` edge cases, including ones with an even digit before the 5, where HALF_UP and HALF_EVEN disagree.
 
 ### 2. `pricing-calc-java`: challenger Java implementation (multi-module)
 - Java 21, Gradle Kotlin DSL.
@@ -39,7 +39,7 @@ All four live in this monorepo as top-level directories. The three Java projects
 ### 3. `amorphic-demo-app`: the calling application
 - Java 21, Spring Boot 3.x.
 - A business endpoint, e.g. `GET /quote?amount=..&from=..&to=..`, which calls `PricingCalc` through the resolver.
-- **Address table** is loaded from an external YAML file, e.g. `/config/addresses.yaml`. A restart per stage is acceptable. An optional `POST /admin/reload` is nice to have.
+- **Address table** is loaded from an external YAML file, e.g. `/config/addresses.yaml`. A restart per stage is acceptable (and is what `./demo` does). `POST /admin/reload` was left out; `POST /evidence/reset` clears evidence without a restart.
 - **Resolver / router** (client-side, inside the app):
   - Resolves the capability `pricing-calc` to a champion, an optional shadow, and an optional canary with a weight.
   - `remote` binding means an HTTP client to the URL.
@@ -54,7 +54,7 @@ All four live in this monorepo as top-level directories. The three Java projects
 - `demo`: one command that drives every stage. `./demo stage <id>` renders that stage's address table, starts only the containers the stage needs, builds the Java image from its git tag (`pricing-calc-java/v2.0` or `v2.1`, so one checkout can replay the bug), and restarts the app. It also has `diff`, `quote`, `traffic`, `evidence`, `gate`, `status`, `logs` and `down`. Demo stages are run with this command, not by checking out different commits. `./demo diff <a> <b>` shows the governor's change as a few lines of YAML.
 - `compose.yaml`: one compose file for all stages; `demo` selects the services.
 - `addresses/stage-0.yaml`, `stage-1.yaml`, `stage-1b.yaml`, `stage-2.yaml`, `stage-3.yaml`, `stage-3b.yaml`, `stage-4.yaml`: one address table per stage in the table below. They contain no comments, so a diff between stages shows only the real change.
-- `golden/vectors.json`: shared input/expected-output cases, including the `.xx5` rounding cases. Consumed by the contract tests in `pricing-calc-py` and `pricing-calc-java`.
+- `golden/vectors.json`: shared input/expected-output cases, consumed by the contract tests in `pricing-calc-py` and `pricing-calc-java`. **The golden set starts incomplete on purpose.** Its first version has `.xx5` cases, but only ones with an odd digit before the 5, where both rounding rules agree. So v2.0 passes its own build, the way a real port would, and the bug reaches stage 1. The case shadow catches is added to the golden set in v2.1, alongside the regression test, so live evidence feeds back into the contract.
 - `scripts/traffic.sh`: steady request load with a configurable share of edge-case inputs, read from `traffic/edge-inputs.txt`. That list is kept separate from the golden vectors because it represents real-world traffic.
 - `scripts/gate.sh`: queries `/evidence` and passes only if consecutive matches ≥ N (default 1000) and there are 0 mismatches since the last reset. Evidence is in memory, so the restart at each stage is the reset. This script is the governor's evidence gate.
 - `README.md`: a step-by-step live demo script with the expected output at each stage, and the `/evidence` JSON shape the gate relies on.
@@ -66,7 +66,7 @@ All four live in this monorepo as top-level directories. The three Java projects
 | 0 Baseline | `pricing-calc@1.0?lang=python` (remote) | none | app, py | quotes work |
 | 1 Shadow | python (remote) | shadow: `pricing-calc@2.0?lang=java` (remote) | app, py, java | **gate fails**: mismatches on `.xx5` cases are visible in `/evidence` |
 | 1b Fix | python (remote) | shadow: `@2.1?lang=java` (remote) | app, py, java | regression test for the caught mismatch passes in the build; gate passes |
-| 2 Canary | python (remote) | canary: java @2.1, weight 10% → 50% (python compared on canary calls) | app, py, java | gate still passes with Java serving |
+| 2 Canary | python (remote) | canary: java @2.1, weight 10% → 50% (python compared on canary calls) | app, py, java | gate still passes with Java serving (at 10% with a lower bar, e.g. `./demo gate 100`, since only canary calls are compared) |
 | 3 Promote | java @2.1 (remote) | shadow: `pricing-calc@1.0?lang=python` (remote) | app, py, java | gate passes with roles reversed (java served, python compared) |
 | 3b Deprecate | java @2.1 (remote) | none | app, java (py scaled to 0) | quotes still correct; python stopped; `/evidence` shows no shadow |
 | 4 Fold-in | `@2.1?lang=java` binding **local** | none | app only (rebuilt with core) | java service removed; quotes still correct; evidence shows `local` binding |

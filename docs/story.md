@@ -12,17 +12,17 @@ Pricing is done by a Python service. It works, it is trusted, and the app calls 
 
 A Java rewrite arrives (v2.0). Nobody trusts it yet, so it serves no one. The app keeps returning Python's answer, but it also sends every request to Java in the background and compares the two results.
 
-Within minutes the comparison finds a problem. On amounts that land exactly on a half penny, Java rounds up and Python rounds to even. The gate script reads the evidence and refuses to pass. Without the shadow, this bug would have reached customers.
+Within minutes the comparison finds a problem. On amounts that land exactly on a half penny, Java rounds up and Python rounds to even. In the recorded run, 340 of 1,200 calls disagreed, and the last one was an ordinary amount: 732.98 GBP is exactly 916.225 USD, so Python said 916.22 and Java said 916.23. Java had passed its own build, because none of the agreed test cases hit this. The gate script reads the evidence and refuses to pass. Without the shadow, this bug would have reached customers.
 
 ## Stage 1b: Fix
 
-The mismatch the shadow caught, recorded in `/evidence`, is turned into a regression test: the same input, with Python's answer as the expected result. Run against v2.0, the test fails, which confirms it describes the bug. Java's rounding is then corrected, and in v2.1 the test passes.
+The mismatch the shadow caught, recorded in `/evidence`, is turned into a regression test: the same input, with Python's answer as the expected result. The same case is added to the shared golden test set, so the contract itself learns from live traffic. Run against v2.0, the test fails, which confirms it describes the bug. Java's rounding is then corrected, and in v2.1 the test passes.
 
 v2.1 goes back into the shadow slot. Thousands of answers now match in a row and the gate passes. The evidence that found the bug is now part of the build, so the bug can't quietly return. Java has proven it gives the same answers, but it hasn't served a real customer yet.
 
 ## Stage 2: Canary
 
-Java starts serving real traffic, first 10% of calls and then half. On those calls Python is still asked for its answer, so every call is still compared. Python remains the champion and stays available as the fallback. This stage tests whether Java holds up under real traffic, not just whether its answers are correct.
+Java starts serving real traffic, first 10% of calls and then half. On those calls Python is still asked for its answer, so every answer Java gives is still checked. Python remains the champion and stays available as the fallback. This stage tests whether Java holds up under real traffic, not just whether its answers are correct.
 
 ## Stage 3: Promote
 

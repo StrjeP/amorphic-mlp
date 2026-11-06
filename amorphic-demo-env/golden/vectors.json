@@ -13,6 +13,7 @@
     { "name": "ordinary rounding",                "amount": "12.34",  "from": "EUR", "to": "USD", "expected": "12.96" },
     { "name": "whole amount",                     "amount": "10.00",  "from": "GBP", "to": "EUR", "expected": "11.90" },
     { "name": "ordinary rounding",                "amount": "7.77",   "from": "GBP", "to": "EUR", "expected": "9.25" },
-    { "name": "half penny, odd digit (agrees)",   "amount": "0.50",   "from": "GBP", "to": "EUR", "expected": "0.60" }
+    { "name": "half penny, odd digit (agrees)",   "amount": "0.50",   "from": "GBP", "to": "EUR", "expected": "0.60" },
+    { "name": "half penny, even digit: caught by shadow in stage 1", "amount": "732.98", "from": "GBP", "to": "USD", "expected": "916.22" }
   ]
 }

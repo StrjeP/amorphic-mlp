@@ -13,6 +13,8 @@ ALL_SERVICES="py-pricing java-pricing"
 die() { echo "demo: $*" >&2; exit 1; }
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 compose() { docker compose -f "$ENV_DIR/compose.yaml" "$@"; }
+# Quiet variant for stage changes; build and start errors are still printed.
+quiet_compose() { docker compose --progress quiet -f "$ENV_DIR/compose.yaml" "$@"; }
 
 # Sets SERVICES (pricing services to run), JAVA_VERSION, FOLD_IN, DESCRIPTION.
 stage_config() {
@@ -118,17 +120,18 @@ cmd_stage() {
 
   # Start this stage's pricing services, then stop any that this stage doesn't use.
   # shellcheck disable=SC2086
-  [[ -n "$SERVICES" ]] && compose up -d --build $SERVICES
+  say "Starting containers (the first build of each image takes a few minutes)"
+  [[ -n "$SERVICES" ]] && quiet_compose up -d --build $SERVICES
   local svc
   for svc in $ALL_SERVICES; do
     case " $SERVICES " in
       *" $svc "*) ;;
-      *) compose rm -sf "$svc" >/dev/null 2>&1 || true ;;
+      *) quiet_compose rm -sf "$svc" >/dev/null 2>&1 || true ;;
     esac
   done
 
   # Recreate the app so it reloads the address table. Evidence is in memory, so this also resets it.
-  compose up -d --build --force-recreate --no-deps app
+  quiet_compose up -d --build --force-recreate --no-deps app
   # The containers now match this stage, even if the health check below fails.
   echo "$stage" > "$RUN_DIR/stage"
   wait_for_app

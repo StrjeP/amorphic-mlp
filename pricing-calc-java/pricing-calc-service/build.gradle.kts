@@ -3,7 +3,7 @@ plugins {
     id("io.spring.dependency-management")
 }
 
-version = "2.0"
+version = "2.1"
 
 dependencies {
     implementation(project(":pricing-calc-core"))

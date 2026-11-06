@@ -1,10 +1,11 @@
 # amorphic-mlp
 
-The source of truth for scope and stages is `docs/amorphic-mlp-plan.md`. Each of the plan's "repositories" is a top-level directory here.
+The source of truth for scope and stages is `docs/amorphic-mlp-plan.md`. Each of the plan's "repositories" is a top-level directory here. `amorphic-demo-env/README.md` has the demo walkthrough and real captured output.
 
-- Java: one root Gradle build (`./gradlew`), toolchain Java 21. Projects are `:pricing-calc-core`, `:pricing-calc-service` and `:amorphic-demo-app`. The app pulls in core as a project dependency, not via mavenLocal.
-- Fold-in: `-PfoldIn=true` puts core in the app's runtime classpath. Without it, core is `compileOnly`, so a `local` binding must fail fast at startup.
+- Java: one root Gradle build (`./gradlew build`), toolchain Java 21. Projects are `:pricing-calc-core`, `:pricing-calc-service` and `:amorphic-demo-app`. The app pulls in core as a project dependency, not via mavenLocal.
+- Fold-in: `-PfoldIn=true` puts core in the app's runtime classpath. Without it, core is `compileOnly`, and a `local` binding fails at startup (`Bindings`, `AddressTableFailureAnalyzer`).
 - Python: `pricing-calc-py` uses uv (`uv run pytest`) on Python 3.12.
-- Golden vectors live at `amorphic-demo-env/golden/vectors.json`. Java tests get the path from the `golden.vectors` system property; Python tests get it from the `golden_vectors_path` fixture.
-- Monorepo tags carry a prefix: `pricing-calc-java/v2.0` (HALF_UP bug) and `pricing-calc-java/v2.1` (HALF_EVEN fix plus a regression test from the caught mismatch).
-- Stages are 0, 1, 1b, 2, 3, 3b and 4, with one `amorphic-demo-env/addresses/stage-<id>.yaml` each. The stage table in the plan is canonical.
+- Golden vectors live at `amorphic-demo-env/golden/vectors.json`. Java tests get the path from the `golden.vectors` system property (`GoldenVectors` in core's test fixtures); Python tests get it from the `golden_vectors_path` fixture. The golden set deliberately has no even-digit half-penny cases before v2.1.
+- Monorepo tags carry a prefix: `pricing-calc-java/v2.0` (HALF_UP bug) and `pricing-calc-java/v2.1` (HALF_EVEN fix plus `RoundingRegressionTest` from the caught mismatch). `./demo` builds Java images from these tags. Keep `PricingCalcCore.VERSION` and the Gradle `version` in step.
+- Stages are 0, 1, 1b, 2, 3, 3b and 4, with one `amorphic-demo-env/addresses/stage-<id>.yaml` each. The stage table in the plan is canonical. Run them with `amorphic-demo-env/demo`.
+- App code map (`amorphic-demo-app/src/main/java/dev/amorphic/demo`): `QuoteController` (the one call site, `/quote`, `/evidence`), `pricing/RoutingPricingCalc` (resolver and champion/shadow/canary routing), `pricing/Bindings` (remote/local), `evidence/EvidenceRecorder` (JSON log lines on the `evidence` logger plus counters).
