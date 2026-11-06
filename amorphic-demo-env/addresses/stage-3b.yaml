@@ -1,0 +1,5 @@
+capabilities:
+  pricing-calc:
+    champion:
+      address: pkg:amorphic/pricing-calc@2.1?lang=java
+      binding: { type: remote, url: http://java-pricing:8080 }

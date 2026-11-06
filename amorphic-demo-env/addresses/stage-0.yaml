@@ -1,0 +1,5 @@
+capabilities:
+  pricing-calc:
+    champion:
+      address: pkg:amorphic/pricing-calc@1.0?lang=python
+      binding: { type: remote, url: http://py-pricing:8000 }

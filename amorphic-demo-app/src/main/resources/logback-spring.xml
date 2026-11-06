@@ -1,0 +1,16 @@
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <!-- Evidence records: one bare JSON object per line, so they can be piped to jq. -->
+  <appender name="EVIDENCE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder><pattern>%msg%n</pattern></encoder>
+  </appender>
+  <logger name="evidence" level="INFO" additivity="false">
+    <appender-ref ref="EVIDENCE"/>
+  </logger>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

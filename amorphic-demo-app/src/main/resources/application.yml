@@ -1,0 +1,13 @@
+server:
+  port: 8080
+amorphic:
+  # Overridden in Docker by AMORPHIC_ADDRESSES=/config/addresses.yaml
+  addresses: ../amorphic-demo-env/addresses/stage-0.yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+spring:
+  main:
+    banner-mode: off

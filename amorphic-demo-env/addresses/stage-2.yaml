@@ -1,0 +1,9 @@
+capabilities:
+  pricing-calc:
+    champion:
+      address: pkg:amorphic/pricing-calc@1.0?lang=python
+      binding: { type: remote, url: http://py-pricing:8000 }
+    canary:
+      address: pkg:amorphic/pricing-calc@2.1?lang=java
+      binding: { type: remote, url: http://java-pricing:8080 }
+      weight: 10

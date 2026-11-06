@@ -1,0 +1,18 @@
+{
+  "description": "Shared golden vectors for pricing-calc. Consumed by the pricing-calc-py and pricing-calc-java contract tests. Expected values use HALF_EVEN rounding to 2 decimal places.",
+  "rounding": "HALF_EVEN",
+  "rates": { "GBP:USD": "1.25", "EUR:USD": "1.05", "GBP:EUR": "1.19" },
+  "cases": [
+    { "name": "whole amount",                     "amount": "100.00", "from": "GBP", "to": "USD", "expected": "125.00" },
+    { "name": "half penny, odd digit (agrees)",   "amount": "10.06",  "from": "GBP", "to": "USD", "expected": "12.58" },
+    { "name": "below half penny",                 "amount": "0.01",   "from": "GBP", "to": "USD", "expected": "0.01" },
+    { "name": "above half penny",                 "amount": "19.99",  "from": "GBP", "to": "USD", "expected": "24.99" },
+    { "name": "zero",                             "amount": "0.00",   "from": "GBP", "to": "USD", "expected": "0.00" },
+    { "name": "whole amount",                     "amount": "50.00",  "from": "EUR", "to": "USD", "expected": "52.50" },
+    { "name": "half penny, odd digit (agrees)",   "amount": "0.30",   "from": "EUR", "to": "USD", "expected": "0.32" },
+    { "name": "ordinary rounding",                "amount": "12.34",  "from": "EUR", "to": "USD", "expected": "12.96" },
+    { "name": "whole amount",                     "amount": "10.00",  "from": "GBP", "to": "EUR", "expected": "11.90" },
+    { "name": "ordinary rounding",                "amount": "7.77",   "from": "GBP", "to": "EUR", "expected": "9.25" },
+    { "name": "half penny, odd digit (agrees)",   "amount": "0.50",   "from": "GBP", "to": "EUR", "expected": "0.60" }
+  ]
+}

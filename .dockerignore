@@ -1,0 +1,9 @@
+**/build/
+**/.gradle/
+.gradle/
+.git/
+**/.venv/
+**/__pycache__/
+amorphic-demo-env/.run/
+.idea/
+**/.DS_Store

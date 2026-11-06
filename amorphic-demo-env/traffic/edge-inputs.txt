@@ -1,0 +1,16 @@
+# Edge-case inputs for ./demo traffic, one "amount from to" per line.
+# Fill in once the rate table is fixed: pick amounts whose converted value lands
+# exactly on a half penny (.xx5), where HALF_UP and HALF_EVEN disagree.
+# This list is kept apart from golden/vectors.json on purpose: it represents
+# real-world traffic, which may contain cases the golden set doesn't.
+#
+# Each of these converts to exactly half a penny with an even digit before the 5,
+# so HALF_UP rounds up and HALF_EVEN rounds down.
+10.02 GBP USD
+0.02 GBP USD
+0.10 GBP USD
+20.02 GBP USD
+0.10 EUR USD
+0.50 EUR USD
+10.10 EUR USD
+1.50 GBP EUR

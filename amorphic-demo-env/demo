@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# demo: drive the amorphic MLP demo one stage at a time.
+# Run ./demo help for usage.
+set -euo pipefail
+
+ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "$ENV_DIR" rev-parse --show-toplevel)"
+RUN_DIR="$ENV_DIR/.run"
+APP_URL="${APP_URL:-http://localhost:8080}"
+STAGES="0 1 1b 2 3 3b 4"
+ALL_SERVICES="py-pricing java-pricing"
+
+die() { echo "demo: $*" >&2; exit 1; }
+say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+compose() { docker compose -f "$ENV_DIR/compose.yaml" "$@"; }
+
+# Sets SERVICES (pricing services to run), JAVA_VERSION, FOLD_IN, DESCRIPTION.
+stage_config() {
+  FOLD_IN=false
+  JAVA_VERSION=v2.1
+  case "$1" in
+    0)  SERVICES="py-pricing"
+        DESCRIPTION="Baseline. Python serves; nothing is compared." ;;
+    1)  SERVICES="py-pricing java-pricing"; JAVA_VERSION=v2.0
+        DESCRIPTION="Shadow. Python serves; Java v2.0 is compared in the background. Expect .xx5 mismatches and a failing gate." ;;
+    1b) SERVICES="py-pricing java-pricing"
+        DESCRIPTION="Fix. Python serves; Java v2.1 (HALF_EVEN fix plus regression test) is compared. Expect the gate to pass." ;;
+    2)  SERVICES="py-pricing java-pricing"
+        DESCRIPTION="Canary. Java v2.1 serves a weighted share of calls; Python is compared on those calls." ;;
+    3)  SERVICES="py-pricing java-pricing"
+        DESCRIPTION="Promote. Roles reversed: Java v2.1 serves; Python is compared." ;;
+    3b) SERVICES="java-pricing"
+        DESCRIPTION="Deprecate. Java v2.1 serves alone; Python is stopped." ;;
+    4)  SERVICES=""; FOLD_IN=true
+        DESCRIPTION="Fold-in. The app is rebuilt with pricing-calc-core in-process; the Java service is removed." ;;
+    *)  die "unknown stage '$1' (stages: $STAGES)" ;;
+  esac
+}
+
+addresses_file() {
+  local f="$ENV_DIR/addresses/stage-$1.yaml"
+  [[ -f "$f" ]] || die "no address table for stage '$1' (stages: $STAGES)"
+  echo "$f"
+}
+
+# Builds the Java service image from its git tag, so the working tree never has to change.
+build_java_image() {
+  local version="$1" tag="pricing-calc-java/$1" image="amorphic/pricing-calc-java:$1"
+  if [[ "${REBUILD:-0}" != 1 ]] && docker image inspect "$image" >/dev/null 2>&1; then
+    return
+  fi
+  git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+    || die "git tag '$tag' not found. Create it once Java $version is built (see docs/amorphic-mlp-plan.md, build order)."
+  say "Building $image from tag $tag"
+  local tmp
+  tmp="$(mktemp -d)"
+  git -C "$REPO_ROOT" archive "refs/tags/$tag" | tar -x -C "$tmp"
+  docker build -t "$image" -f "$tmp/pricing-calc-java/pricing-calc-service/Dockerfile" "$tmp" \
+    || { rm -rf "$tmp"; die "docker build failed for $image"; }
+  rm -rf "$tmp"
+}
+
+wait_for_app() {
+  local i
+  for i in $(seq 1 60); do
+    if curl -fsS -o /dev/null "$APP_URL/actuator/health" 2>/dev/null; then return; fi
+    sleep 1
+  done
+  die "app did not become healthy at $APP_URL within 60s (try: ./demo logs app)"
+}
+
+cmd_stage() {
+  [[ $# -ge 1 ]] || die "usage: ./demo stage <id> [--weight N]"
+  local stage="$1" weight=""
+  shift
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --weight) [[ $# -ge 2 ]] || die "--weight needs a value"; weight="$2"; shift 2 ;;
+      *) die "unknown option '$1'" ;;
+    esac
+  done
+  stage_config "$stage"
+  local src
+  src="$(addresses_file "$stage")"
+  if [[ -n "$weight" ]]; then
+    [[ "$stage" == 2 ]] || die "--weight only applies to stage 2"
+    [[ "$weight" =~ ^[0-9]+$ && "$weight" -le 100 ]] || die "--weight must be 0-100"
+  fi
+
+  say "Stage $stage: $DESCRIPTION"
+
+  # Build what the stage needs before touching the running state.
+  case " $SERVICES " in *" java-pricing "*) build_java_image "$JAVA_VERSION" ;; esac
+
+  # Render the new address table and show the governor's change against the active one.
+  mkdir -p "$RUN_DIR"
+  local label="stage-$stage.yaml"
+  if [[ -n "$weight" ]]; then
+    label="stage-$stage.yaml (weight $weight)"
+    sed -E "s/^([[:space:]]*weight:).*/\1 $weight/" "$src" > "$RUN_DIR/addresses.next.yaml"
+  else
+    cp "$src" "$RUN_DIR/addresses.next.yaml"
+  fi
+  if [[ -f "$RUN_DIR/addresses.yaml" && -f "$RUN_DIR/stage" ]]; then
+    local previous
+    previous="$(cat "$RUN_DIR/stage")"
+    if ! cmp -s "$RUN_DIR/addresses.yaml" "$RUN_DIR/addresses.next.yaml"; then
+      say "Address table change (stage $previous -> $stage):"
+      diff -u --label "stage-$previous.yaml (active)" --label "$label" \
+        "$RUN_DIR/addresses.yaml" "$RUN_DIR/addresses.next.yaml" || true
+    fi
+  fi
+  mv "$RUN_DIR/addresses.next.yaml" "$RUN_DIR/addresses.yaml"
+
+  export JAVA_VERSION
+  export APP_FOLD_IN="$FOLD_IN"
+  if [[ "$FOLD_IN" == true ]]; then export APP_VARIANT=foldin; else export APP_VARIANT=remote; fi
+
+  # Start this stage's pricing services, then stop any that this stage doesn't use.
+  # shellcheck disable=SC2086
+  [[ -n "$SERVICES" ]] && compose up -d --build $SERVICES
+  local svc
+  for svc in $ALL_SERVICES; do
+    case " $SERVICES " in
+      *" $svc "*) ;;
+      *) compose rm -sf "$svc" >/dev/null 2>&1 || true ;;
+    esac
+  done
+
+  # Recreate the app so it reloads the address table. Evidence is in memory, so this also resets it.
+  compose up -d --build --force-recreate --no-deps app
+  # The containers now match this stage, even if the health check below fails.
+  echo "$stage" > "$RUN_DIR/stage"
+  wait_for_app
+  say "Stage $stage is up. Running: app${SERVICES:+ $SERVICES}"
+}
+
+cmd_diff() {
+  [[ $# -eq 2 ]] || die "usage: ./demo diff <from-stage> <to-stage>"
+  diff -u --label "stage-$1.yaml" --label "stage-$2.yaml" \
+    "$(addresses_file "$1")" "$(addresses_file "$2")" || true
+}
+
+cmd_quote() {
+  [[ $# -ge 1 ]] || die "usage: ./demo quote <amount> [from] [to]"
+  curl -fsS "$APP_URL/quote?amount=$1&from=${2:-GBP}&to=${3:-USD}" | jq .
+}
+
+cmd_status() {
+  if [[ -f "$RUN_DIR/stage" ]]; then
+    local stage
+    stage="$(cat "$RUN_DIR/stage")"
+    stage_config "$stage"
+    say "Stage $stage: $DESCRIPTION"
+    cat "$RUN_DIR/addresses.yaml"
+  else
+    echo "No stage started yet. Start with: ./demo stage 0"
+  fi
+  say "Containers"
+  compose ps
+}
+
+usage() {
+  cat <<EOF
+Usage: ./demo <command> [args]
+
+  stage <id> [--weight N]   Bring up a stage ($STAGES). --weight sets the canary % in stage 2.
+  diff <from> <to>          Show what the governor changes between two stages' address tables.
+  quote <amount> [from] [to]  Call the app's /quote (default GBP -> USD).
+  traffic [options]         Send steady /quote load (see ./demo traffic --help).
+  evidence                  Show the app's /evidence summary.
+  gate [N]                  Pass only if every comparison has >= N consecutive matches (default 1000) and 0 mismatches.
+  status                    Show the active stage, its address table and running containers.
+  logs [service]            Follow container logs (evidence records are the app's JSON log lines).
+  down                      Stop everything and forget the active stage.
+
+Environment: APP_URL (default http://localhost:8080), REBUILD=1 to rebuild the Java image from its tag.
+EOF
+}
+
+main() {
+  local cmd="${1:-help}"
+  [[ $# -gt 0 ]] && shift
+  case "$cmd" in
+    stage)    cmd_stage "$@" ;;
+    diff)     cmd_diff "$@" ;;
+    quote)    cmd_quote "$@" ;;
+    traffic)  exec "$ENV_DIR/scripts/traffic.sh" "$@" ;;
+    evidence) curl -fsS "$APP_URL/evidence" | jq . ;;
+    gate)     exec "$ENV_DIR/scripts/gate.sh" "$@" ;;
+    status)   cmd_status ;;
+    logs)     compose logs -f "$@" ;;
+    down)     compose down --remove-orphans; rm -rf "$RUN_DIR" ;;
+    help|-h|--help) usage ;;
+    *) usage >&2; exit 1 ;;
+  esac
+}
+
+main "$@"
