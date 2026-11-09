@@ -37,9 +37,10 @@ public class RoutingPricingCalc implements PricingCalc {
     private final DoubleSupplier random;
     private final EvidenceRecorder evidence;
     private final Clock clock;
+    private final long generation;
 
     RoutingPricingCalc(Target champion, Target shadow, Target canary, int canaryWeight, Executor background,
-            DoubleSupplier random, EvidenceRecorder evidence, Clock clock) {
+            DoubleSupplier random, EvidenceRecorder evidence, Clock clock, long generation) {
         this.champion = champion;
         this.shadow = shadow;
         this.canary = canary;
@@ -48,12 +49,13 @@ public class RoutingPricingCalc implements PricingCalc {
         this.random = random;
         this.evidence = evidence;
         this.clock = clock;
+        this.generation = generation;
     }
 
     /** Resolves the capability's roles to endpoints. Throws {@link AddressTableException} if the table can't be honoured. */
     public static RoutingPricingCalc resolve(AddressTable.Capability capability,
             BiFunction<Address, AddressTable.Binding, PricingEndpoint> bindings, Executor background,
-            DoubleSupplier random, EvidenceRecorder evidence, Clock clock) {
+            DoubleSupplier random, EvidenceRecorder evidence, Clock clock, long generation) {
         if (capability.shadow() != null && capability.canary() != null) {
             throw new AddressTableException("a capability can have a shadow or a canary, not both");
         }
@@ -70,8 +72,8 @@ public class RoutingPricingCalc implements PricingCalc {
             weight = w;
         }
         RoutingPricingCalc calc = new RoutingPricingCalc(champion, shadow, canary, weight, background, random,
-                evidence, clock);
-        LOG.info("pricing-calc resolved: {}", calc.describe());
+                evidence, clock, generation);
+        LOG.info("pricing-calc resolved (generation {}): {}", generation, calc.describe());
         return calc;
     }
 
@@ -119,7 +121,7 @@ public class RoutingPricingCalc implements PricingCalc {
 
     private EvidenceRecorder.Call call(String requestId, BigDecimal amount, String from, String to, Target served,
             String role, BigDecimal value, Target other, BigDecimal otherValue, String error) {
-        return new EvidenceRecorder.Call(clock.instant(), requestId, amount, from, to, served.address().raw(),
+        return new EvidenceRecorder.Call(generation, clock.instant(), requestId, amount, from, to, served.address().raw(),
                 served.binding(), role, value, other == null ? null : other.address().raw(), otherValue, error);
     }
 }

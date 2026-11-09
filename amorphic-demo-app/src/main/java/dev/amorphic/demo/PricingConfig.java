@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.amorphic.demo.evidence.EvidenceRecorder;
 import dev.amorphic.demo.pricing.AddressTable;
 import dev.amorphic.demo.pricing.BindingFactory;
-import dev.amorphic.demo.pricing.PricingCalc;
-import dev.amorphic.demo.pricing.RoutingPricingCalc;
+import dev.amorphic.demo.pricing.ReloadablePricingCalc;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.concurrent.Executors;
@@ -22,11 +21,14 @@ class PricingConfig {
         return new EvidenceRecorder(json);
     }
 
-    /** Loaded once at startup: a stage change is a restart with a new address table. */
+    /**
+     * The startup table comes from amorphic.addresses. Later tables arrive through
+     * POST /admin/address-table and are applied without a restart.
+     */
     @Bean
-    PricingCalc pricingCalc(@Value("${amorphic.addresses}") String addresses, EvidenceRecorder evidence) {
-        AddressTable table = AddressTable.load(Path.of(addresses));
-        return RoutingPricingCalc.resolve(table.capability("pricing-calc"), BindingFactory.DEFAULT,
+    ReloadablePricingCalc pricingCalc(@Value("${amorphic.addresses}") String addresses, EvidenceRecorder evidence) {
+        Path path = Path.of(addresses);
+        return new ReloadablePricingCalc(AddressTable.load(path), path.toString(), BindingFactory.DEFAULT,
                 Executors.newVirtualThreadPerTaskExecutor(), () -> ThreadLocalRandom.current().nextDouble(),
                 evidence, Clock.systemUTC());
     }

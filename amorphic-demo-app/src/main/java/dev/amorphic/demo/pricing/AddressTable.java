@@ -22,15 +22,27 @@ public record AddressTable(Map<String, Capability> capabilities) {
             throw new AddressTableException("address table not found at " + path.toAbsolutePath());
         }
         try {
+            return parse(Files.readString(path), path.toString());
+        } catch (IOException e) {
+            throw new AddressTableException("cannot read address table " + path + ": " + e.getMessage());
+        }
+    }
+
+    /** Parses and checks the shape of a table. {@code source} names it in error messages. */
+    public static AddressTable parse(String yaml, String source) {
+        if (yaml == null || yaml.isBlank()) {
+            throw new AddressTableException("address table " + source + " is empty");
+        }
+        try {
             AddressTable table = new ObjectMapper(new YAMLFactory())
                     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
-                    .readValue(path.toFile(), AddressTable.class);
+                    .readValue(yaml, AddressTable.class);
             if (table == null || table.capabilities() == null) {
-                throw new AddressTableException("address table " + path + " has no 'capabilities'");
+                throw new AddressTableException("address table " + source + " has no 'capabilities'");
             }
             return table;
         } catch (IOException e) {
-            throw new AddressTableException("cannot read address table " + path + ": " + e.getMessage());
+            throw new AddressTableException("cannot read address table " + source + ": " + e.getMessage());
         }
     }
 

@@ -21,6 +21,7 @@ public class EvidenceRecorder {
 
     /** What happened on one call. shadow* fields are null when nothing was compared. */
     public record Call(
+            long generation,
             Instant timestamp,
             String requestId,
             BigDecimal amount,
@@ -58,6 +59,8 @@ public class EvidenceRecorder {
     }
 
     private final ObjectMapper json;
+    /** The address table generation whose evidence is being counted. Older records are dropped. */
+    private long generation;
     private final Map<ServedKey, Long> served = new LinkedHashMap<>();
     private final Map<PairKey, PairStats> pairs = new LinkedHashMap<>();
 
@@ -67,6 +70,10 @@ public class EvidenceRecorder {
 
     public void record(Call call) {
         synchronized (this) {
+            if (call.generation() != generation) {
+                // A call that started under a previous address table finished after the switch.
+                return;
+            }
             served.merge(new ServedKey(call.servedAddress(), call.servedBinding()), 1L, Long::sum);
             if (call.compared()) {
                 PairStats s = pairs.computeIfAbsent(new PairKey(call.servedAddress(), call.shadowAddress()),
@@ -94,12 +101,23 @@ public class EvidenceRecorder {
                 "served", k.served(), "shadow", k.shadow(), "total", s.total, "matches", s.matches,
                 "mismatches", s.mismatches, "consecutiveMatches", s.consecutiveMatches,
                 "lastMismatch", s.lastMismatch)));
-        return ordered("served", servedOut, "comparisons", comparisons);
+        return ordered("generation", generation, "served", servedOut, "comparisons", comparisons);
     }
 
+    /** Clears the counters and keeps counting the current generation. */
     public synchronized void reset() {
         served.clear();
         pairs.clear();
+    }
+
+    /** Clears the counters and starts counting a new address table generation. */
+    public synchronized void reset(long newGeneration) {
+        reset();
+        generation = newGeneration;
+    }
+
+    public synchronized long generation() {
+        return generation;
     }
 
     private static Map<String, Object> mismatchExample(Call call) {
@@ -115,6 +133,7 @@ public class EvidenceRecorder {
     private void log(Call call) {
         Map<String, Object> line = ordered(
                 "timestamp", call.timestamp().toString(),
+                "generation", call.generation(),
                 "requestId", call.requestId(),
                 "input", ordered("amount", call.amount().toPlainString(), "from", call.from(), "to", call.to()),
                 "address_served", call.servedAddress(),

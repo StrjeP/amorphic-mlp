@@ -23,7 +23,8 @@ Some amounts convert to exactly half a penny, for example 10.02 GBP → 12.525 U
 
 | Command | What it does |
 |---|---|
-| `./demo stage <id> [--weight N]` | Bring up a stage, print the address-table change from the active stage, and restart the app. The restart also resets evidence. |
+| `./demo stage <id> [--weight N]` | Bring up a stage: start the services it routes to and wait for their `/health`, print the address-table change, switch the app's routing **without a restart**, then stop services the new routing no longer uses. Only folding core in (stage 4) or out rebuilds the app. Every applied table starts a new evidence generation. |
+| `./demo apply <file>` | Push any address table to the running app. Routing only: it doesn't start or stop containers. A table the app can't honour is rejected and the current routing stays live. |
 | `./demo diff <from> <to>` | Show what the governor changes between two stages. |
 | `./demo quote <amount> [from] [to]` | One `/quote` call. |
 | `./demo traffic [--requests N] [--edge-share PCT]` | Steady load (default 1200 requests). |
@@ -198,18 +199,59 @@ Description:
 address pkg:amorphic/pricing-calc@2.1?lang=java has a local binding, but pricing-calc-core is not in this build. Rebuild the app with -PfoldIn=true (./demo stage 4 does this).
 ```
 
-Going back works too: `./demo stage 3b` after stage 4 puts the remote binding back.
+Going back works too: `./demo stage 3b` after stage 4 puts the remote binding back, rebuilding the app without core.
 
 ```bash
 ./demo down
 ```
 
+## Switching without a restart
+
+The app holds its routing behind one reference. A new address table is resolved and checked first, then swapped in, so requests never see a half-applied table. Each applied table is a new **generation**, and evidence restarts with it. A comparison that was still running under the old table when the switch happened carries the old generation, and is dropped instead of being counted against the new one.
+
+In the run below (2026-11-09), the app container started once in stage 0 and kept running through stages 1, 1b, 2 (10% and 50%), 3 and 3b: generations 2 to 7. The gate results matched the restart-per-stage run above.
+
+```text
+Stage 1:  Applied without restart: generation 2   ->  GATE FAIL (366 mismatches of 1200)
+Stage 1b: Applied without restart: generation 3   ->  GATE PASS (1200 of 1200)
+Stage 2:  Applied without restart: generation 4   ->  GATE PASS at 10% (156 Java-served, all matched)
+Stage 2:  Applied without restart: generation 5   ->  GATE PASS at 50% (1238 Java-served, all matched)
+Stage 3:  Applied without restart: generation 6   ->  GATE PASS (1200 of 1200)
+Stage 3b: Applied without restart: generation 7   ->  Python stopped, Java serves alone
+```
+
+The one stage change that can't be made live is the fold-in, because a running app can't load code it was built without. Asking the remote-only build for a local binding is rejected, and the current routing keeps serving:
+
+```text
+$ ./demo apply addresses/stage-4.yaml
+The app rejected the table (HTTP 400):
+  address pkg:amorphic/pricing-calc@2.1?lang=java has a local binding, but pricing-calc-core is not in this build. Rebuild the app with -PfoldIn=true (./demo stage 4 does this).
+Still live (generation 7): champion=pkg:amorphic/pricing-calc@2.1?lang=java (remote)
+```
+
+`./demo stage 4` then says why it rebuilds:
+
+```text
+Rebuilding the app with pricing-calc-core folded in (a binding change can't add code to a running app)
+```
+
+### Admin endpoints
+
+| Endpoint | What it does |
+|---|---|
+| `GET /admin/address-table` | The live table, its generation, when it was applied and where it came from. |
+| `POST /admin/address-table` | Apply a YAML table (`Content-Type: application/yaml`, optional `X-Table-Source` header to name it). Returns the new generation, or 400 with the reason and the routing that stayed live. |
+| `POST /evidence/reset` | Clear evidence without changing the table. |
+
+There is no authentication on these; security is out of scope for the MLP.
+
 ## `/evidence` shape
 
-`./demo gate` relies on this shape. `POST /evidence/reset` clears it without a restart.
+`./demo gate` relies on this shape. `generation` is the address table generation the counts belong to.
 
 ```json
 {
+  "generation": 2,
   "served": [
     { "address": "pkg:amorphic/pricing-calc@1.0?lang=python", "binding": "remote", "total": 1200 }
   ],
