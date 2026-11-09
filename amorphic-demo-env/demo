@@ -71,6 +71,56 @@ wait_for_app() {
   die "app did not become healthy at $APP_URL within 60s (try: ./demo logs app)"
 }
 
+# Host port of each pricing service's /health (see compose.yaml).
+health_url() {
+  case "$1" in
+    py-pricing)   echo "http://localhost:8000/health" ;;
+    java-pricing) echo "http://localhost:8090/health" ;;
+  esac
+}
+
+wait_for_service() {
+  local url i
+  url="$(health_url "$1")"
+  for i in $(seq 1 60); do
+    if curl -fsS -o /dev/null "$url" 2>/dev/null; then return; fi
+    sleep 1
+  done
+  die "$1 did not answer $url within 60s (try: ./demo logs $1)"
+}
+
+app_running() {
+  [[ -n "$(compose ps --status running -q app 2>/dev/null)" ]] \
+    && curl -fsS -o /dev/null "$APP_URL/actuator/health" 2>/dev/null
+}
+
+# POSTs an address table to the running app. Prints the outcome; returns 1 if the app rejected it.
+post_table() {
+  local file="$1" source="$2" code
+  code="$(curl -sS -o "$RUN_DIR/apply.json" -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/yaml' -H "X-Table-Source: $source" \
+    --data-binary @"$file" "$APP_URL/admin/address-table")" || die "cannot reach the app at $APP_URL"
+  if [[ "$code" == 200 ]]; then
+    jq -r '"Applied without restart: generation \(.generation)\n  \(.routing)"' "$RUN_DIR/apply.json"
+    return 0
+  fi
+  echo "The app rejected the table (HTTP $code):" >&2
+  jq -r '"  \(.error)\nStill live (generation \(.generation)): \(.kept)"' "$RUN_DIR/apply.json" >&2 2>/dev/null \
+    || cat "$RUN_DIR/apply.json" >&2
+  return 1
+}
+
+# Prints the change from the active table to $2 (label $3), if there is an active table.
+show_change() {
+  local next="$1" label="$2"
+  [[ -f "$RUN_DIR/addresses.yaml" ]] || return 0
+  cmp -s "$RUN_DIR/addresses.yaml" "$next" && return 0
+  local previous="?"
+  [[ -f "$RUN_DIR/stage" ]] && previous="$(cat "$RUN_DIR/stage")"
+  say "Address table change ($previous -> $label):"
+  diff -u --label "active ($previous)" --label "$label" "$RUN_DIR/addresses.yaml" "$next" || true
+}
+
 cmd_stage() {
   [[ $# -ge 1 ]] || die "usage: ./demo stage <id> [--weight N]"
   local stage="$1" weight=""
@@ -103,26 +153,47 @@ cmd_stage() {
   else
     cp "$src" "$RUN_DIR/addresses.next.yaml"
   fi
-  if [[ -f "$RUN_DIR/addresses.yaml" && -f "$RUN_DIR/stage" ]]; then
-    local previous
-    previous="$(cat "$RUN_DIR/stage")"
-    if ! cmp -s "$RUN_DIR/addresses.yaml" "$RUN_DIR/addresses.next.yaml"; then
-      say "Address table change (stage $previous -> $stage):"
-      diff -u --label "stage-$previous.yaml (active)" --label "$label" \
-        "$RUN_DIR/addresses.yaml" "$RUN_DIR/addresses.next.yaml" || true
-    fi
-  fi
-  mv "$RUN_DIR/addresses.next.yaml" "$RUN_DIR/addresses.yaml"
+  show_change "$RUN_DIR/addresses.next.yaml" "$label"
 
   export JAVA_VERSION
   export APP_FOLD_IN="$FOLD_IN"
   if [[ "$FOLD_IN" == true ]]; then export APP_VARIANT=foldin; else export APP_VARIANT=remote; fi
 
-  # Start this stage's pricing services, then stop any that this stage doesn't use.
-  # shellcheck disable=SC2086
-  say "Starting containers (the first build of each image takes a few minutes)"
-  [[ -n "$SERVICES" ]] && quiet_compose up -d --build $SERVICES
+  # 1. Start the services this stage routes to, and wait until each answers /health.
   local svc
+  if [[ -n "$SERVICES" ]]; then
+    say "Starting services (the first build of each image takes a few minutes)"
+    # shellcheck disable=SC2086
+    quiet_compose up -d --build $SERVICES
+    for svc in $SERVICES; do wait_for_service "$svc"; done
+  fi
+
+  # 2. Switch the app's routing: live if the running build fits, otherwise (re)create the app.
+  local current_variant=""
+  [[ -f "$RUN_DIR/variant" ]] && current_variant="$(cat "$RUN_DIR/variant")"
+  if app_running && [[ "$current_variant" == "$APP_VARIANT" ]]; then
+    say "Switching routing in the running app (no restart)"
+    if ! post_table "$RUN_DIR/addresses.next.yaml" "$label"; then
+      rm -f "$RUN_DIR/addresses.next.yaml"
+      die "stage $stage not applied; the previous stage is still live"
+    fi
+    mv "$RUN_DIR/addresses.next.yaml" "$RUN_DIR/addresses.yaml"
+  else
+    if [[ -z "$current_variant" ]]; then
+      say "Starting the app"
+    elif [[ "$APP_VARIANT" == foldin ]]; then
+      say "Rebuilding the app with pricing-calc-core folded in (a binding change can't add code to a running app)"
+    else
+      say "Rebuilding the app without pricing-calc-core"
+    fi
+    mv "$RUN_DIR/addresses.next.yaml" "$RUN_DIR/addresses.yaml"
+    quiet_compose up -d --build --force-recreate --no-deps app
+    echo "$APP_VARIANT" > "$RUN_DIR/variant"
+    wait_for_app
+  fi
+  echo "$stage" > "$RUN_DIR/stage"
+
+  # 3. Stop services the new routing no longer uses.
   for svc in $ALL_SERVICES; do
     case " $SERVICES " in
       *" $svc "*) ;;
@@ -130,12 +201,27 @@ cmd_stage() {
     esac
   done
 
-  # Recreate the app so it reloads the address table. Evidence is in memory, so this also resets it.
-  quiet_compose up -d --build --force-recreate --no-deps app
-  # The containers now match this stage, even if the health check below fails.
-  echo "$stage" > "$RUN_DIR/stage"
-  wait_for_app
   say "Stage $stage is up. Running: app${SERVICES:+ $SERVICES}"
+}
+
+cmd_apply() {
+  [[ $# -eq 1 ]] || die "usage: ./demo apply <address-table.yaml>"
+  local file="$1"
+  [[ -f "$file" ]] || die "no such file: $file"
+  app_running || die "the app isn't running. Start a stage first, e.g. ./demo stage 0"
+  mkdir -p "$RUN_DIR"
+  local name label
+  name="$(basename "$file")"
+  label="$name"
+  show_change "$file" "$label"
+  post_table "$file" "$label" || exit 1
+  cp "$file" "$RUN_DIR/addresses.yaml"
+  # Name the stage if this is one of the stage tables; otherwise record it as custom.
+  case "$name" in
+    stage-*.yaml) echo "${name#stage-}" | sed 's/\.yaml$//' > "$RUN_DIR/stage" ;;
+    *) echo "custom:$name" > "$RUN_DIR/stage" ;;
+  esac
+  echo "Note: apply changes routing only. Start or stop services yourself, or use ./demo stage."
 }
 
 cmd_diff() {
@@ -153,9 +239,15 @@ cmd_status() {
   if [[ -f "$RUN_DIR/stage" ]]; then
     local stage
     stage="$(cat "$RUN_DIR/stage")"
-    stage_config "$stage"
-    say "Stage $stage: $DESCRIPTION"
+    case " $STAGES " in
+      *" $stage "*) stage_config "$stage"; say "Stage $stage: $DESCRIPTION" ;;
+      *) say "Custom table (${stage#custom:}), applied with ./demo apply" ;;
+    esac
     cat "$RUN_DIR/addresses.yaml"
+    if app_running; then
+      say "Live in the app"
+      curl -fsS "$APP_URL/admin/address-table" | jq -r '"generation \(.generation), applied \(.appliedAt) from \(.source)\n  \(.routing)"'
+    fi
   else
     echo "No stage started yet. Start with: ./demo stage 0"
   fi
@@ -168,6 +260,8 @@ usage() {
 Usage: ./demo <command> [args]
 
   stage <id> [--weight N]   Bring up a stage ($STAGES). --weight sets the canary % in stage 2.
+                            Routing switches live; the app is rebuilt only to fold core in or out.
+  apply <file>              Push an address table to the running app (routing only, no containers).
   diff <from> <to>          Show what the governor changes between two stages' address tables.
   quote <amount> [from] [to]  Call the app's /quote (default GBP -> USD).
   traffic [options]         Send steady /quote load (see ./demo traffic --help).
@@ -186,6 +280,7 @@ main() {
   [[ $# -gt 0 ]] && shift
   case "$cmd" in
     stage)    cmd_stage "$@" ;;
+    apply)    cmd_apply "$@" ;;
     diff)     cmd_diff "$@" ;;
     quote)    cmd_quote "$@" ;;
     traffic)  exec "$ENV_DIR/scripts/traffic.sh" "$@" ;;

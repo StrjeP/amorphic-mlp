@@ -38,7 +38,7 @@ class RoutingPricingCalcTest {
 
     RoutingPricingCalc calc(AddressTable.Capability c, double random) {
         // Runnable::run makes the background comparison synchronous for the test.
-        return RoutingPricingCalc.resolve(c, FAKES, Runnable::run, () -> random, evidence, Clock.systemUTC());
+        return RoutingPricingCalc.resolve(c, FAKES, Runnable::run, () -> random, evidence, Clock.systemUTC(), 0);
     }
 
     @SuppressWarnings("unchecked")

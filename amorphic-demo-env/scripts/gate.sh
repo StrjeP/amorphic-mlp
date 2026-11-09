@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # gate.sh: the governor's evidence gate.
 # Passes only if there is at least one comparison, and every compared address pair
-# has >= N consecutive matches and 0 mismatches since the last reset (app restart).
+# has >= N consecutive matches and 0 mismatches since the last reset (each applied address table resets it).
 set -euo pipefail
 
 APP_URL="${APP_URL:-http://localhost:8080}"
