@@ -255,6 +255,40 @@ cmd_status() {
   compose ps
 }
 
+cmd_inventory() {
+  local raw
+  raw="$(curl -sS "$APP_URL/inventory")" || die "cannot reach the app at $APP_URL"
+  if [[ "${1:-}" == "--json" ]]; then echo "$raw" | jq .; return; fi
+  if jq -e '.error' <<< "$raw" >/dev/null 2>&1; then
+    echo "Inventory unavailable: $(jq -r .error <<< "$raw")"; return 1
+  fi
+  jq -r '
+    "Inventory: \(if .ready then "READY" else "NOT READY" end)  (generation \(.generation), table from \(.tableSource))",
+    "",
+    "Routing and health:",
+    (.placements[] | "  \(.role | . + (" " * (9 - length)))\(.address)  \(.bindingType)\(if .weight then " \(.weight)%" else "" end)  " +
+      (if .health.status == "UP" then "UP (\(.health.latencyMs) ms)"
+       elif .health.status == "IN_PROCESS" then "IN PROCESS"
+       else "DOWN: \(.health.detail)" end)),
+    "",
+    "Evidence: \(.evidence.served | map(.total) | add // 0) calls served in generation \(.evidence.generation) (ready needs \(.minEvidence))",
+    (if (.notReadyBecause | length) > 0 then "", "Not ready because:", (.notReadyBecause[] | "  - \(.)") else empty end),
+    (if (.problems | length) > 0 then "", "Problems (reported, not acted on):", (.problems[] | "  - \(.)") else empty end),
+    "",
+    def state: if .planned then "PLANNED (\(.planned))"
+      elif .withdrawn and (.routedAs | length) > 0 then "WITHDRAWN, but still routed as \(.routedAs | join(", "))"
+      elif .withdrawn then "WITHDRAWN"
+      elif (.routedAs | length) > 0 then "routed as \(.routedAs | join(", "))"
+      elif .runningAs then .runningAs
+      else "not routed" end;
+    "Catalogue, capabilities:",
+    (.catalogue[] | select(.kind != "tooling") | "  \(.address)  \(state)"),
+    "",
+    "Catalogue, tooling:",
+    (.catalogue[] | select(.kind == "tooling") | "  \(.address)  \(state)")
+  ' <<< "$raw"
+}
+
 usage() {
   cat <<EOF
 Usage: ./demo <command> [args]
@@ -266,6 +300,7 @@ Usage: ./demo <command> [args]
   quote <amount> [from] [to]  Call the app's /quote (default GBP -> USD).
   traffic [options]         Send steady /quote load (see ./demo traffic --help).
   evidence                  Show the app's /evidence summary.
+  inventory [--json]        Observe the system now: routing, /health of each address, readiness, catalogue.
   gate [N]                  Pass only if every comparison has >= N consecutive matches (default 1000) and 0 mismatches.
   status                    Show the active stage, its address table and running containers.
   logs [service]            Follow container logs (evidence records are the app's JSON log lines).
@@ -285,6 +320,7 @@ main() {
     quote)    cmd_quote "$@" ;;
     traffic)  exec "$ENV_DIR/scripts/traffic.sh" "$@" ;;
     evidence) curl -fsS "$APP_URL/evidence" | jq . ;;
+    inventory) cmd_inventory "$@" ;;
     gate)     exec "$ENV_DIR/scripts/gate.sh" "$@" ;;
     status)   cmd_status ;;
     logs)     compose logs -f "$@" ;;

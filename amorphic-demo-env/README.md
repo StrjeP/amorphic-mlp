@@ -29,6 +29,7 @@ Some amounts convert to exactly half a penny, for example 10.02 GBP → 12.525 U
 | `./demo quote <amount> [from] [to]` | One `/quote` call. |
 | `./demo traffic [--requests N] [--edge-share PCT]` | Steady load (default 1200 requests). |
 | `./demo evidence` | The `/evidence` summary. |
+| `./demo inventory [--json]` | Observe the system now: routing, `/health` of each address, readiness and the catalogue (see [Inventory](#inventory)). |
 | `./demo gate [N]` | The governor's gate. It passes only with ≥ N consecutive matches (default 1000) and 0 mismatches. |
 | `./demo status` / `logs` / `down` | Show the active stage, follow logs, or stop everything. |
 
@@ -245,6 +246,87 @@ Rebuilding the app with pricing-calc-core folded in (a binding change can't add 
 
 There is no authentication on these; security is out of scope for the MLP.
 
+## Inventory
+
+`./demo inventory` asks the app what is actually running right now. It looks at three things every time you ask, and keeps nothing between asks:
+
+1. **The live address table**: what each role (champion, shadow, canary) is supposed to be routed to.
+2. **A `/health` check of every remote address in that table** (see below).
+3. **`/evidence`**: how many calls have been served and compared under the current table.
+
+It compares what it finds with **`catalogue.yaml`**, the hand-edited list of every version and where it may run, and reports **ready** or **not ready**, with the reasons.
+
+The catalogue lists two kinds of entry. **Capabilities** do the business work and are routed by the address table: pricing-calc 1.0, 2.0 (withdrawn) and 2.1. **Tooling** runs the system itself: the catalogue (this file), the inventory, and the governor, which is marked *planned* until phase 3. Tooling isn't in the address table yet, so the inventory reports where it actually runs instead: the inventory in-process in the app, and the catalogue as a file. Phase 4 gives the inventory and governor their own addresses and bindings in the table.
+
+**Ready** means all three of these are true:
+
+- every remote address in the table answers `/health`;
+- the evidence belongs to the table that's live now (it didn't change mid-look);
+- there are at least 100 evidence records (`amorphic.inventory.min-evidence`), enough to judge.
+
+**Problems** are mismatches between the table and the catalogue, such as a withdrawn version still being routed. They are reported, not acted on, and they don't affect readiness. The governor (phase 3) will read both.
+
+### What `/health` is for
+
+Every service in the demo answers `GET /health` with `{"status":"ok"}`. It does no work; it only proves the service is running and can take requests. The address table says what *should* be running. `/health` tells the inventory what *is*, the way knocking on a door tells you more than reading the floor plan.
+
+- **Answers with 200**: the service is **UP**, and the inventory records how long it took.
+- **No answer, an error, or no answer within 2 seconds**: it is **DOWN**, with the reason.
+- **A `local` binding**: nothing to knock on, because it runs inside the app. It is **IN PROCESS**, and up whenever the app is.
+
+Two reasons for checking this way rather than asking Docker. First, it works the same whether the inventory runs inside the app or as its own service later. Second, it is safe: a `/health` call can only ask, while access to Docker would let a container control the whole machine. It also tests what matters. A container can be "running" while the service in it has crashed or is still starting, but `/health` only answers once requests can be served. `./demo stage` uses the same check to wait for new services before routing to them.
+
+### Captured output (2026-11-09)
+
+Stage 1, after 150 calls. Ready, and it flags 2.0 because the catalogue marks it withdrawn:
+
+```text
+Inventory: READY  (generation 2, table from stage-1.yaml)
+
+Routing and health:
+  champion pkg:amorphic/pricing-calc@1.0?lang=python  remote  UP (1 ms)
+  shadow   pkg:amorphic/pricing-calc@2.0?lang=java  remote  UP (1 ms)
+
+Evidence: 150 calls served in generation 2 (ready needs 100)
+
+Problems (reported, not acted on):
+  - pkg:amorphic/pricing-calc@2.0?lang=java is routed as shadow but is withdrawn: Rounds HALF_UP; shadow caught it disagreeing with 1.0 in stage 1. Replaced by 2.1.
+
+Catalogue, capabilities:
+  pkg:amorphic/pricing-calc@1.0?lang=python  routed as champion
+  pkg:amorphic/pricing-calc@2.0?lang=java  WITHDRAWN, but still routed as shadow
+  pkg:amorphic/pricing-calc@2.1?lang=java  not routed
+
+Catalogue, tooling:
+  pkg:amorphic/catalogue@1.0?lang=yaml  file /catalogue/catalogue.yaml
+  pkg:amorphic/inventory@0.1?lang=java  in-process in the demo app (this inventory)
+  pkg:amorphic/governor@0.1?lang=java  PLANNED (governor phase 3)
+```
+
+Stage 3b with the Java service stopped by hand (`docker compose stop java-pricing`). The table still routes to it, but `/health` gets no answer, so the inventory says why it isn't ready:
+
+```text
+Inventory: NOT READY  (generation 1, table from /config/addresses.yaml)
+  champion pkg:amorphic/pricing-calc@2.1?lang=java  remote  DOWN: unreachable: connection refused or host not found
+Not ready because:
+  - pkg:amorphic/pricing-calc@2.1?lang=java (champion, http://java-pricing:8080) is not answering /health: unreachable: connection refused or host not found
+```
+
+About 2 seconds after the service is started again, it shows `UP` again. The app keeps DNS answers for 5 seconds, and failed lookups for 1 second, so a restarted container is seen quickly.
+
+Stage 4, folded in. Nothing to probe:
+
+```text
+Inventory: READY  (generation 1, table from /config/addresses.yaml)
+
+Routing and health:
+  champion pkg:amorphic/pricing-calc@2.1?lang=java  local  IN PROCESS
+
+Evidence: 150 calls served in generation 1 (ready needs 100)
+```
+
+`./demo inventory --json` (or `GET /inventory`) returns the full snapshot. If the inventory can't observe at all, it returns 503 with the reason.
+
 ## `/evidence` shape
 
 `./demo gate` relies on this shape. `generation` is the address table generation the counts belong to.
@@ -282,6 +364,7 @@ A comparison matches only when the two values are identical strings, so `12.5` a
 | `demo` | The stage switcher and demo commands. |
 | `compose.yaml` | One compose file for all stages. `./demo` chooses which services run. |
 | `addresses/stage-*.yaml` | One address table per stage, with no comments, so `./demo diff` shows only the real change. |
+| `catalogue.yaml` | Every capability and tooling version, where it may run, and whether it is withdrawn or planned. Edited by hand; read on every inventory observation. |
 | `golden/vectors.json` | Shared contract test cases (rates, inputs, expected HALF_EVEN results). |
 | `traffic/edge-inputs.txt` | Half-penny inputs where HALF_UP and HALF_EVEN disagree. |
 | `scripts/traffic.sh`, `scripts/gate.sh` | The load generator and the evidence gate. |

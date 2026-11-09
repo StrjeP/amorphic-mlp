@@ -1,0 +1,50 @@
+# Catalogue: every version of every capability and every piece of tooling, and where it may run.
+# Static and edited by hand. The inventory reports it; the governor (phase 3)
+# proposes only capability versions that are listed here and not withdrawn.
+#
+#   kind       capability: does the business work and is routed by the address table
+#              tooling:    runs the system itself (catalogue, inventory, governor)
+#   locations  where the version may run: remote (its own service), local (in-process), file
+#   service    for remote: the compose service and URL it is reachable at
+#   withdrawn  set by a human, with the reason, to stop a version being proposed again
+#   planned    not built yet; says when it is due
+capabilities:
+  pricing-calc:
+    kind: capability
+    description: Converts an amount between currencies, rounded to 2 decimal places (HALF_EVEN).
+    versions:
+      - address: pkg:amorphic/pricing-calc@1.0?lang=python
+        locations: [remote]
+        service: { name: py-pricing, url: http://py-pricing:8000 }
+
+      - address: pkg:amorphic/pricing-calc@2.0?lang=java
+        locations: [remote]
+        service: { name: java-pricing, url: http://java-pricing:8080 }
+        withdrawn: "Rounds HALF_UP; shadow caught it disagreeing with 1.0 in stage 1. Replaced by 2.1."
+
+      - address: pkg:amorphic/pricing-calc@2.1?lang=java
+        locations: [remote, local]
+        service: { name: java-pricing, url: http://java-pricing:8080 }
+
+  catalogue:
+    kind: tooling
+    description: This file. Every version, where it may run, and whether it is withdrawn. Edited by hand.
+    versions:
+      - address: pkg:amorphic/catalogue@1.0?lang=yaml
+        locations: [file]
+
+  inventory:
+    kind: tooling
+    description: Observes what is running now (live address table, /health of each address, /evidence) against this catalogue. Stores nothing.
+    versions:
+      - address: pkg:amorphic/inventory@0.1?lang=java
+        # In-process in the demo app for now; a remote location comes with governor phase 4.
+        locations: [local]
+
+  governor:
+    kind: tooling
+    description: Applies a rule table to the inventory and proposes the next address table. A human approves.
+    versions:
+      - address: pkg:amorphic/governor@0.1?lang=java
+        locations: [local, remote]
+        planned: "governor phase 3"

@@ -14,6 +14,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
+    // The inventory always runs in-process for now; phase 4 adds a remote binding for it.
+    implementation(project(":inventory-core"))
     if (foldIn) {
         implementation(project(":pricing-calc-core"))
     } else {

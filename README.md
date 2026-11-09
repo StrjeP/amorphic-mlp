@@ -17,7 +17,8 @@ A minimal, runnable demo of an "amorphic" capability. `pricing-calc` starts out 
 | `pricing-calc-java/pricing-calc-core/` | Plain-Java library (v2.0 has the planted HALF_UP bug, v2.1 has the fix and a regression test) | Java 21, Gradle |
 | `pricing-calc-java/pricing-calc-service/` | Spring Boot REST wrapper over core | Java 21, Gradle |
 | `amorphic-demo-app/` | Calling app: `/quote`, resolver, shadow/canary, `/evidence` | Java 21, Spring Boot 3, Gradle |
-| `amorphic-demo-env/` | Compose files, per-stage address tables, golden vectors, traffic and gate scripts | docker compose, bash |
+| `amorphic-inventory/inventory-core/` | The inventory: observes the live table, `/health` and `/evidence` against the catalogue | Java 21, Gradle |
+| `amorphic-demo-env/` | Compose files, per-stage address tables, catalogue, golden vectors, traffic and gate scripts | docker compose, bash |
 
 The Java modules share one Gradle build at the repo root. The demo app depends on `:pricing-calc-core` as a project, so `mavenLocal()` isn't needed.
 

@@ -13,9 +13,12 @@ services:
     ports: ["8080:8080"]
     environment:
       AMORPHIC_ADDRESSES: /config/addresses.yaml
+      AMORPHIC_CATALOGUE: /catalogue/catalogue.yaml
     volumes:
       # ./demo renders the active stage's address table into .run/
       - ./.run:/config:ro
+      # The static catalogue the inventory reports against; edits apply on the next observation.
+      - ./catalogue.yaml:/catalogue/catalogue.yaml:ro
 
   py-pricing:
     image: amorphic/pricing-calc-py:1.0
