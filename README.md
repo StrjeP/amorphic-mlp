@@ -1,5 +1,7 @@
 # amorphic-mlp
 
+This demo is active development, this will grow as capabilities are developed, the intention is to provide a step by step guide to recreate the story for yourself.
+
 A minimal, runnable demo of an "amorphic" capability. `pricing-calc` starts out as a Python service, gets re-implemented in Java, earns trust through shadow and canary traffic, and is then folded into the calling app. The full plan is in [docs/amorphic-mlp-plan.md](docs/amorphic-mlp-plan.md). For the high-level narrative, see [docs/story.md](docs/story.md).
 
 ## Articles
