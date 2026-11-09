@@ -44,7 +44,7 @@ The fix is a new address, `@2.1`, so its evidence starts from zero rather than i
 
 ![Stage 2: Java serves a growing share while Python keeps checking it](images/storyboard/stage-2-canary.svg)
 
-The direction of serving flips for a share of calls, but every call is still compared, so trust is extended in steps.
+The direction of serving flips for a share of calls, but every answer Java serves is still compared with Python's, so trust is extended in steps.
 
 ### Stages 3 and 3b · Promote, then deprecate Python
 

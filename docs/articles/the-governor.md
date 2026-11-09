@@ -25,7 +25,7 @@ The [Amorphic demo](what-this-demo-shows.md) attempts to show a concrete example
 
 At first glance this may feel fanciful, but it is grounded in established practice. LaunchDarkly describes [progressive delivery](https://launchdarkly.com/blog/progressive-delivery/) as releasing changes gradually to subsets of users and environments, in a controlled way. Typical patterns are canary launches, percentage rollouts and ring deployments. That discipline is well understood when one service replaces another.
 
-The amorphic demo takes it one step further: the evidence that lets a new version serve traffic is also the evidence that lets the system change shape. The evidence is stricter too, because every answer is compared with the incumbent's rather than relying on error rates and latency alone.
+The amorphic demo takes it one step further: the evidence that lets a new version serve traffic is also the evidence that lets the system change shape. The evidence is stricter too, because every answer the new version gives is compared with the incumbent's rather than relying on error rates and latency alone.
 
 ## Service Weaver
 

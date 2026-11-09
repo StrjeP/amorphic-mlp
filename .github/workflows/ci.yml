@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    name: Java (core, service, demo app)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      # Includes the golden-vector contract tests and RoundingRegressionTest.
+      - run: ./gradlew build
+      # Stage 4 needs the fold-in build to keep working too.
+      - run: ./gradlew :amorphic-demo-app:bootJar -PfoldIn=true
+
+  python:
+    name: Python (incumbent service)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pricing-calc-py
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      # uv installs Python 3.12 from .python-version and uses the lockfile as-is.
+      - run: uv run --frozen pytest
+
+  demo-env:
+    name: Demo scripts and compose
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: amorphic-demo-env
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shell syntax
+        run: for f in demo scripts/*.sh; do bash -n "$f"; done
+      - run: docker compose -f compose.yaml config --quiet
+      - name: Every stage has an address table
+        run: for s in 0 1 1b 2 3 3b 4; do test -f "addresses/stage-$s.yaml" || { echo "missing stage-$s.yaml"; exit 1; }; done
