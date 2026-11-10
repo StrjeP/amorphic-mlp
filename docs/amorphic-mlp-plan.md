@@ -59,6 +59,14 @@ All four live in this monorepo as top-level directories. The three Java projects
 - `scripts/gate.sh`: queries `/evidence` and passes only if consecutive matches ≥ N (default 1000) and there are 0 mismatches since the last reset. Each applied address table is a new evidence generation, and that is the reset. Comparisons still running from the previous table are dropped rather than counted. This script is the governor's evidence gate.
 - `README.md`: a step-by-step live demo script with the expected output at each stage, and the `/evidence` JSON shape the gate relies on.
 
+### 5. `amorphic-inventory`: catalogue and inventory (governor phase 2)
+- `amorphic-demo-env/catalogue.yaml`: static, in git, edited by hand. Lists every version of every capability (`kind: capability`, e.g. pricing-calc) and of the tooling (`kind: tooling`: catalogue, inventory, governor), where it may run (`remote`, `local`, `file`), its service URL, an optional `withdrawn` reason, and an optional `planned` note for tooling not built yet. 2.0 is marked withdrawn; the governor is planned (phase 3); the inventory may run only `local` until phase 4. The inventory reports where unrouted tooling actually runs.
+- `inventory-core`: plain-Java library (no Spring) so it can run in-process or behind its own service later. Its `Inventory` interface is remote-shaped: `observe(timeout)` returns a value, `Observed(snapshot)` or `Unavailable(reason)`, never an exception or shared state.
+- Each observation reads the live address table, probes `GET /health` on every remote address in it (in parallel, within the deadline), reads `/evidence`, and checks the result against the catalogue. Nothing is stored.
+- **Ready** = every remote address answers `/health`, the evidence generation matches the live table's, and there are at least N evidence records (default 100). **Problems** (a withdrawn version routed, a binding the catalogue doesn't allow, an address not in the catalogue) are reported but don't affect readiness.
+- For now it runs inside the demo app (`GET /inventory`, `./demo inventory`). Giving it its own address and binding is phase 4.
+- Observation uses `/health` probes, not the Docker socket (agreed design): it works the same in-process or remote, and a probe can only ask.
+
 ## Stages
 
 | Stage | Champion | Shadow / Canary | Running containers | Exit criterion |
@@ -134,8 +142,8 @@ capabilities:
 
 ## Out of scope for the MLP
 
-- Automated governor (stages are advanced by hand).
-- Service mesh, gateway, service discovery and catalogue service.
+- Automated governor (stages are advanced by hand). Governor phases 1–2 add hot reload and the inventory; the governor itself proposes, and a human approves.
+- Service mesh, gateway and service discovery. (The catalogue is a static file and the inventory is in memory; neither is a service yet.)
 - Writes and state migration (the capability is a pure function on purpose).
 - Persistence of evidence beyond process memory and logs.
 - Security and auth.
@@ -144,5 +152,5 @@ capabilities:
 
 - Persist evidence records as proper topology records.
 - Have the governor read `/evidence` and propose the next address table.
-- Promote the address table into a catalogue/inventory service.
+- Run the inventory as its own service (governor phase 4), and promote the catalogue to a service.
 - Reverse move: extract an in-process module back out to a remote service.
