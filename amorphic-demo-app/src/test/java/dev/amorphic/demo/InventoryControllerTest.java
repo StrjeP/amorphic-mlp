@@ -44,11 +44,11 @@ class InventoryControllerTest {
         void showsTheToolingInTheCatalogue() throws Exception {
             mvc.perform(get("/inventory"))
                     .andExpect(jsonPath("$.catalogue[?(@.capability == 'inventory')].runningAs",
-                            hasItem("in-process in the demo app (this inventory)")))
+                            hasItem(containsString("in-process in the demo app (no address-table entry"))))
                     .andExpect(jsonPath("$.catalogue[?(@.capability == 'catalogue')].runningAs",
                             hasItem(containsString("catalogue.yaml"))))
                     .andExpect(jsonPath("$.catalogue[?(@.capability == 'governor')].runningAs",
-                            hasItem("in-process in the demo app")));
+                            hasItem(containsString("in-process in the demo app (no address-table entry"))));
         }
 
         @Test

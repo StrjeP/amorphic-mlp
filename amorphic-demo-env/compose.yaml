@@ -1,5 +1,7 @@
 # One compose file for every stage. ./demo decides which services run,
 # which Java version is used and whether the app is built with fold-in.
+# The inventory and governor services run only when the address table binds them remote
+# (./demo tooling remote); otherwise both run in-process in the app.
 name: amorphic
 
 services:
@@ -32,3 +34,29 @@ services:
     # Built by ./demo from the git tag pricing-calc-java/<version>, not from the working tree.
     image: amorphic/pricing-calc-java:${JAVA_VERSION:-v2.1}
     ports: ["8090:8080"]
+
+  inventory:
+    image: amorphic/inventory-service:0.1
+    build:
+      context: ..
+      dockerfile: amorphic-inventory/inventory-service/Dockerfile
+    ports: ["8100:8080"]
+    environment:
+      AMORPHIC_APP_URL: http://app:8080
+      AMORPHIC_CATALOGUE: /catalogue/catalogue.yaml
+    volumes:
+      - ./catalogue.yaml:/catalogue/catalogue.yaml:ro
+
+  governor:
+    image: amorphic/governor-service:0.1
+    build:
+      context: ..
+      dockerfile: amorphic-governor/governor-service/Dockerfile
+    ports: ["8110:8080"]
+    environment:
+      AMORPHIC_APP_URL: http://app:8080
+      AMORPHIC_CATALOGUE: /catalogue/catalogue.yaml
+      AMORPHIC_GOVERNOR_RULES: /governor/governor-rules.yaml
+    volumes:
+      - ./catalogue.yaml:/catalogue/catalogue.yaml:ro
+      - ./governor-rules.yaml:/governor/governor-rules.yaml:ro

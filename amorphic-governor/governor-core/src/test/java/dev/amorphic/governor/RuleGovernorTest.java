@@ -235,13 +235,14 @@ class RuleGovernorTest {
         assertThat(governor().approve("g9-nothing", T)).isInstanceOf(Governor.Rejected.class);
     }
 
+    /** Tooling entries as ./demo tooling writes them: here the inventory is its own service. */
     @Test
     void proposalsLeaveTheGovernorAndInventoryEntriesAlone() throws Exception {
         String withTooling = stageFile("1b") + """
                   inventory:
                     champion:
                       address: pkg:amorphic/inventory@0.1?lang=java
-                      binding: { type: local }
+                      binding: { type: remote, url: http://inventory:8080 }
                   governor:
                     champion:
                       address: pkg:amorphic/governor@0.1?lang=java

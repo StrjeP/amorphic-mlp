@@ -46,6 +46,43 @@ public record AddressTable(Map<String, Capability> capabilities) {
         }
     }
 
+    /** The tooling the address table may route besides capabilities: the inventory and the governor. */
+    public static final java.util.Set<String> TOOLING = java.util.Set.of("inventory", "governor");
+
+    /**
+     * Checks the tooling entries, if any: a champion only (tooling isn't shadowed or canaried), bound
+     * {@code local} (in-process in this app) or {@code remote} with a url.
+     *
+     * @throws AddressTableException if an entry can't be honoured
+     */
+    public void checkTooling() {
+        for (String name : TOOLING) {
+            Capability c = capabilities.get(name);
+            if (c == null) {
+                continue;
+            }
+            if (c.champion() == null || c.shadow() != null || c.canary() != null) {
+                throw new AddressTableException("the " + name + " entry must have a champion and nothing else");
+            }
+            Binding b = c.champion().binding();
+            String type = b == null ? null : b.type();
+            if ("remote".equals(type)) {
+                if (b.url() == null || b.url().isBlank()) {
+                    throw new AddressTableException("remote binding for the " + name + " has no url");
+                }
+            } else if (!"local".equals(type)) {
+                throw new AddressTableException("the " + name + " needs a binding of type local or remote, not '"
+                        + type + "'");
+            }
+        }
+    }
+
+    /** The binding the table gives a tooling entry, or null if it has none (then it runs in-process). */
+    public Binding tooling(String name) {
+        Capability c = capabilities.get(name);
+        return c == null || c.champion() == null ? null : c.champion().binding();
+    }
+
     public Capability capability(String name) {
         Capability c = capabilities.get(name);
         if (c == null || c.champion() == null) {

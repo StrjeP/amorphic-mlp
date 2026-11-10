@@ -19,20 +19,20 @@ class CatalogueTest {
     }
 
     @Test
-    void listsTheToolingAndMarksWhatIsNotBuiltYet() {
+    void listsTheToolingAndWhereItMayRun() {
         assertThat(catalogue.kind("pricing-calc")).isEqualTo("capability");
         for (String tool : new String[] {"catalogue", "inventory", "governor"}) {
             assertThat(catalogue.kind(tool)).as(tool).isEqualTo("tooling");
             assertThat(catalogue.versions(tool)).as(tool).hasSize(1);
         }
-        var inventory = catalogue.versions("inventory").get(0);
-        assertThat(inventory.allows("local")).isTrue();
-        assertThat(inventory.allows("remote")).as("remote comes with phase 4").isFalse();
-        var governor = catalogue.versions("governor").get(0);
-        assertThat(governor.isPlanned()).as("built in phase 3").isFalse();
-        assertThat(governor.allows("local")).isTrue();
-        assertThat(governor.allows("remote")).as("remote comes with phase 4").isFalse();
-        assertThat(inventory.isPlanned()).isFalse();
+        // Both may run in-process in the app or as their own service, at the service URL the table uses.
+        for (String tool : new String[] {"inventory", "governor"}) {
+            var v = catalogue.versions(tool).get(0);
+            assertThat(v.isPlanned()).as(tool).isFalse();
+            assertThat(v.allows("local")).as(tool).isTrue();
+            assertThat(v.allows("remote")).as(tool).isTrue();
+            assertThat(v.service().url()).as(tool).isEqualTo("http://" + tool + ":8080");
+        }
     }
 
     @Test

@@ -4,7 +4,7 @@ import java.time.Duration;
 
 /**
  * Where the inventory's observations come from. In-process they read the app directly; as a
- * separate service they would call the app's /admin/address-table and /evidence over HTTP.
+ * separate service they call the app's /admin/address-table and /evidence ({@link HttpSources}).
  */
 public final class Sources {
 

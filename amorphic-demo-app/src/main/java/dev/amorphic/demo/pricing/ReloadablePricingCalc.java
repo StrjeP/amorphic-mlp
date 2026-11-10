@@ -55,6 +55,7 @@ public class ReloadablePricingCalc implements PricingCalc {
     public synchronized Applied apply(AddressTable table, String source) {
         State current = state.get();
         long next = current == null ? 1 : current.applied().generation() + 1;
+        table.checkTooling();
         RoutingPricingCalc routing = RoutingPricingCalc.resolve(table.capability(CAPABILITY), bindings, background,
                 random, evidence, clock, next);
         Applied applied = new Applied(next, clock.instant(), source, routing.describe(), table);

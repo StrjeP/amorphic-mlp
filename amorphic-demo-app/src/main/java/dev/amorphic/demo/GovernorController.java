@@ -1,18 +1,20 @@
 package dev.amorphic.demo;
 
 import dev.amorphic.governor.Governor;
+import dev.amorphic.governor.GovernorHttp;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
  * The governor's endpoints. Proposing never changes anything; only an explicit approval does,
- * and that is a human's call (./demo approve). Out of scope for the MLP: authentication.
+ * and that is a human's call (./demo approve). The governor runs wherever the address table says;
+ * this call site doesn't change. Out of scope for the MLP: authentication.
  */
 @RestController
 class GovernorController {
@@ -27,42 +29,24 @@ class GovernorController {
 
     /** Asks the governor to look at the system now and propose the next table, if any. */
     @PostMapping("/governor/proposals")
-    ResponseEntity<Map<String, Object>> propose() {
-        return switch (governor.propose(TIMEOUT)) {
-            case Governor.Proposed p -> ResponseEntity.ok(body("proposed", "proposal", p.proposal()));
-            case Governor.Waiting w -> ResponseEntity.ok(body("waiting", "reasons", w.reasons()));
-            case Governor.Holding h -> ResponseEntity.ok(body("holding", "rule", h.rule(), "why", h.why(),
-                    "details", h.details()));
-            case Governor.NoChange n -> ResponseEntity.ok(body("no-change", "reason", n.reason()));
-            case Governor.Unavailable u -> ResponseEntity.status(503).body(body("unavailable", "reason", u.reason()));
-        };
+    ResponseEntity<Map<String, Object>> propose(@RequestParam(required = false) Long timeoutMs) {
+        return reply(GovernorHttp.propose(governor.propose(InventoryController.timeout(timeoutMs, TIMEOUT))));
     }
 
     @GetMapping("/governor/proposals/{id}")
     ResponseEntity<?> proposal(@PathVariable String id) {
         return governor.proposal(id).<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.status(404).body(body("not-found", "reason",
-                        "no pending proposal '" + id + "'")));
+                .orElseGet(() -> reply(GovernorHttp.notFound(id)));
     }
 
     /** A human approves a proposal. Applied live, unless it needs a rebuild or the system has moved on. */
     @PostMapping("/governor/proposals/{id}/approve")
-    ResponseEntity<Map<String, Object>> approve(@PathVariable String id) {
-        return switch (governor.approve(id, TIMEOUT)) {
-            case Governor.Applied a -> ResponseEntity.ok(body("applied", "generation", a.generation(),
-                    "proposal", a.proposal()));
-            case Governor.NeedsRebuild r -> ResponseEntity.status(409).body(body("needs-rebuild", "how", r.how(),
-                    "proposal", r.proposal()));
-            case Governor.Rejected r -> ResponseEntity.status(409).body(body("rejected", "reason", r.reason()));
-        };
+    ResponseEntity<Map<String, Object>> approve(@PathVariable String id,
+            @RequestParam(required = false) Long timeoutMs) {
+        return reply(GovernorHttp.approve(governor.approve(id, InventoryController.timeout(timeoutMs, TIMEOUT))));
     }
 
-    private static Map<String, Object> body(String status, Object... kv) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("status", status);
-        for (int i = 0; i < kv.length; i += 2) {
-            m.put((String) kv[i], kv[i + 1]);
-        }
-        return m;
+    private static ResponseEntity<Map<String, Object>> reply(GovernorHttp.Reply r) {
+        return ResponseEntity.status(r.status()).body(r.body());
     }
 }

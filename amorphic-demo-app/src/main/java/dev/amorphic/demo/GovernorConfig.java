@@ -16,9 +16,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Runs the governor in-process. It reads the inventory, the catalogue and the rule table (both
- * read on every proposal, so hand edits apply straight away), and an approved table goes to the
- * app's live routing.
+ * The governor, routed by the address table's {@code governor} entry ({@link RoutedGovernor}).
+ * In-process it reads the inventory (itself routed), the catalogue and the rule table (both read
+ * on every proposal, so hand edits apply straight away), and an approved table goes to the app's
+ * live routing. As its own service it does the same over HTTP (governor-service).
  */
 @Configuration
 class GovernorConfig {
@@ -35,7 +36,8 @@ class GovernorConfig {
                 return new TableSink.Refused(e.getMessage());
             }
         };
-        return new RuleGovernor(inventory, () -> Catalogue.load(cataloguePath), () -> RuleTable.load(rulesPath), sink,
-                Clock.systemUTC());
+        Governor local = new RuleGovernor(inventory, () -> Catalogue.load(cataloguePath),
+                () -> RuleTable.load(rulesPath), sink, Clock.systemUTC());
+        return new RoutedGovernor(() -> pricingCalc.current().table(), local);
     }
 }

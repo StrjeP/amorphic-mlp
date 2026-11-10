@@ -41,4 +41,5 @@ The last move changes the shape of the system. The Java logic was built as a pla
 - **The call site stays fixed and the address moves.** Each stage is a different address table behind the same line of code.
 - **Trust is earned in order.** Java's answers are compared before they are served (shadow), then Java serves a share of traffic (canary), then all of it (champion), and finally it runs in-process (local). Each step relies on evidence from the one before.
 - **The planted bug is the point.** When stage 1 fails, the demo is working. The process catches a small, plausible difference that code review would likely miss, and the fix comes with a test so the lesson stays learned.
+- **The tooling follows the same rule.** The inventory and governor have addresses in the same table, so they too can run in-process or as services without their callers changing. Only a person moves them.
 - **A person decides and the evidence informs.** Nothing advances automatically. At first a human reads the gate's result and edits the table. With the governor, the rules propose each move from the evidence, and a human still approves every one, which keeps responsibility visible.
