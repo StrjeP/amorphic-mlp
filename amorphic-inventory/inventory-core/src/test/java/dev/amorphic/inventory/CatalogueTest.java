@@ -28,7 +28,10 @@ class CatalogueTest {
         var inventory = catalogue.versions("inventory").get(0);
         assertThat(inventory.allows("local")).isTrue();
         assertThat(inventory.allows("remote")).as("remote comes with phase 4").isFalse();
-        assertThat(catalogue.versions("governor").get(0).isPlanned()).isTrue();
+        var governor = catalogue.versions("governor").get(0);
+        assertThat(governor.isPlanned()).as("built in phase 3").isFalse();
+        assertThat(governor.allows("local")).isTrue();
+        assertThat(governor.allows("remote")).as("remote comes with phase 4").isFalse();
         assertThat(inventory.isPlanned()).isFalse();
     }
 

@@ -47,8 +47,8 @@ class InventoryControllerTest {
                             hasItem("in-process in the demo app (this inventory)")))
                     .andExpect(jsonPath("$.catalogue[?(@.capability == 'catalogue')].runningAs",
                             hasItem(containsString("catalogue.yaml"))))
-                    .andExpect(jsonPath("$.catalogue[?(@.capability == 'governor')].planned",
-                            hasItem("governor phase 3")));
+                    .andExpect(jsonPath("$.catalogue[?(@.capability == 'governor')].runningAs",
+                            hasItem("in-process in the demo app")));
         }
 
         @Test

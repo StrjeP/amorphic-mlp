@@ -121,6 +121,41 @@ show_change() {
   diff -u --label "active ($previous)" --label "$label" "$RUN_DIR/addresses.yaml" "$next" || true
 }
 
+# Starts the given pricing services (Java at $JAVA_VERSION) and waits for each one's /health.
+start_services() {
+  local services="$1" svc
+  [[ -n "$services" ]] || return 0
+  case " $services " in *" java-pricing "*) build_java_image "$JAVA_VERSION" ;; esac
+  export JAVA_VERSION
+  say "Starting services (the first build of each image takes a few minutes)"
+  # shellcheck disable=SC2086
+  quiet_compose up -d --build $services
+  for svc in $services; do wait_for_service "$svc"; done
+}
+
+# Stops the pricing services that aren't in the given list.
+stop_unused_services() {
+  local services="$1" svc
+  for svc in $ALL_SERVICES; do
+    case " $services " in
+      *" $svc "*) ;;
+      *) quiet_compose rm -sf "$svc" >/dev/null 2>&1 || true ;;
+    esac
+  done
+}
+
+# Prints the stage a table file is, e.g. "1b" or "2 --weight 50", or nothing if it isn't one.
+match_stage() {
+  local f="$1" s w
+  for s in $STAGES; do
+    cmp -s "$f" "$ENV_DIR/addresses/stage-$s.yaml" && { echo "$s"; return; }
+  done
+  w="$(sed -nE 's/^[[:space:]]*weight:[[:space:]]*([0-9]+).*/\1/p' "$f")"
+  if [[ -n "$w" ]] && sed -E "s/^([[:space:]]*weight:).*/\1 $w/" "$ENV_DIR/addresses/stage-2.yaml" | cmp -s - "$f"; then
+    echo "2 --weight $w"
+  fi
+}
+
 cmd_stage() {
   [[ $# -ge 1 ]] || die "usage: ./demo stage <id> [--weight N]"
   local stage="$1" weight=""
@@ -160,13 +195,7 @@ cmd_stage() {
   if [[ "$FOLD_IN" == true ]]; then export APP_VARIANT=foldin; else export APP_VARIANT=remote; fi
 
   # 1. Start the services this stage routes to, and wait until each answers /health.
-  local svc
-  if [[ -n "$SERVICES" ]]; then
-    say "Starting services (the first build of each image takes a few minutes)"
-    # shellcheck disable=SC2086
-    quiet_compose up -d --build $SERVICES
-    for svc in $SERVICES; do wait_for_service "$svc"; done
-  fi
+  start_services "$SERVICES"
 
   # 2. Switch the app's routing: live if the running build fits, otherwise (re)create the app.
   local current_variant=""
@@ -194,12 +223,7 @@ cmd_stage() {
   echo "$stage" > "$RUN_DIR/stage"
 
   # 3. Stop services the new routing no longer uses.
-  for svc in $ALL_SERVICES; do
-    case " $SERVICES " in
-      *" $svc "*) ;;
-      *) quiet_compose rm -sf "$svc" >/dev/null 2>&1 || true ;;
-    esac
-  done
+  stop_unused_services "$SERVICES"
 
   say "Stage $stage is up. Running: app${SERVICES:+ $SERVICES}"
 }
@@ -222,6 +246,109 @@ cmd_apply() {
     *) echo "custom:$name" > "$RUN_DIR/stage" ;;
   esac
   echo "Note: apply changes routing only. Start or stop services yourself, or use ./demo stage."
+}
+
+cmd_propose() {
+  mkdir -p "$RUN_DIR"
+  local raw status
+  raw="$(curl -sS -X POST "$APP_URL/governor/proposals")" || die "cannot reach the app at $APP_URL"
+  status="$(jq -r '.status // "error"' <<< "$raw")"
+  case "$status" in
+    proposed)
+      local id matched generation
+      id="$(jq -r .proposal.id <<< "$raw")"
+      generation="$(jq -r .proposal.basedOnGeneration <<< "$raw")"
+      echo "$id" > "$RUN_DIR/last-proposal"
+      jq -j .proposal.fromTable <<< "$raw" > "$RUN_DIR/proposal.from.yaml"
+      jq -j .proposal.toTable <<< "$raw" > "$RUN_DIR/proposal.yaml"
+      matched="$(match_stage "$RUN_DIR/proposal.yaml")"
+      say "Proposal $id"
+      jq -r '.proposal | "  rule:      \(.rule)\n  why:       \(.why)" + (if .gate then "\n  evidence:  \(.gate)" else "" end)' <<< "$raw"
+      [[ -n "$matched" ]] && echo "  this is:   stage ${matched/ --weight / at weight }"
+      say "Proposed change:"
+      diff -u --label "live (generation $generation)" --label "proposal $id" \
+        "$RUN_DIR/proposal.from.yaml" "$RUN_DIR/proposal.yaml" || true
+      if [[ "$(jq -r .proposal.needsRebuild <<< "$raw")" == true ]]; then
+        echo
+        echo "This folds the module into the app, which the running build can't do live."
+        echo "Approving it rebuilds the app with this table."
+      fi
+      echo
+      echo "Nothing changes until a human approves it:  ./demo approve $id"
+      ;;
+    waiting)
+      say "Waiting: the governor won't propose yet"
+      jq -r '.reasons[] | "  - \(.)"' <<< "$raw" ;;
+    holding)
+      say "Holding (rule $(jq -r .rule <<< "$raw"))"
+      jq -r '"  \(.why)", (.details[] | "  - \(.)")' <<< "$raw" ;;
+    no-change)
+      say "No proposal"
+      jq -r '"  \(.reason)"' <<< "$raw" ;;
+    *)
+      echo "The governor couldn't look at the system: $(jq -r '.reason // .' <<< "$raw")" >&2
+      return 1 ;;
+  esac
+}
+
+cmd_approve() {
+  mkdir -p "$RUN_DIR"
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    [[ -f "$RUN_DIR/last-proposal" ]] || die "usage: ./demo approve <proposal-id> (see ./demo propose)"
+    id="$(cat "$RUN_DIR/last-proposal")"
+  fi
+  local raw code
+  raw="$(curl -sS -w '\n%{http_code}' "$APP_URL/governor/proposals/$id")" || die "cannot reach the app at $APP_URL"
+  code="${raw##*$'\n'}"
+  raw="${raw%$'\n'*}"
+  [[ "$code" == 200 ]] || die "no pending proposal '$id'. Ask for a new one: ./demo propose"
+  jq -j .toTable <<< "$raw" > "$RUN_DIR/proposal.yaml"
+  local matched
+  matched="$(match_stage "$RUN_DIR/proposal.yaml")"
+
+  if [[ "$(jq -r .needsRebuild <<< "$raw")" == true ]]; then
+    # Approval always goes through the governor, which checks the system hasn't moved on since the proposal.
+    code="$(curl -sS -o "$RUN_DIR/approve.json" -w '%{http_code}' -X POST "$APP_URL/governor/proposals/$id/approve")" \
+      || die "cannot reach the app at $APP_URL"
+    if [[ "$(jq -r .status "$RUN_DIR/approve.json")" != needs-rebuild ]]; then
+      echo "Not applied: $(jq -r '.reason // .' "$RUN_DIR/approve.json")" >&2
+      exit 1
+    fi
+    [[ "$matched" == 4 ]] || die "proposal $id needs a rebuild that ./demo can't do automatically; apply it by hand"
+    say "Approved $id. The governor says it needs a rebuild:"
+    echo "  $(jq -r .how "$RUN_DIR/approve.json")"
+    cmd_stage 4
+    return
+  fi
+
+  # The governor proposes tables; it doesn't run containers. Start what the proposal routes to first.
+  local services="" url host java_address
+  for url in $(jq -r '.toRoles[] | select(.bindingType == "remote") | .url' <<< "$raw"); do
+    host="$(sed -E 's|^[a-z]+://([^:/]+).*|\1|' <<< "$url")"
+    case " $services " in *" $host "*) ;; *) services="${services:+$services }$host" ;; esac
+  done
+  java_address="$(jq -r '[.toRoles[] | select((.url // "") | contains("java-pricing")) | .address][0] // empty' <<< "$raw")"
+  if [[ -n "$java_address" ]]; then
+    JAVA_VERSION="v$(sed -E 's|.*@([^?]+).*|\1|' <<< "$java_address")"
+  else
+    JAVA_VERSION=v2.1
+  fi
+  export APP_VARIANT=remote APP_FOLD_IN=false
+  start_services "$services"
+
+  say "Approving $id"
+  code="$(curl -sS -o "$RUN_DIR/approve.json" -w '%{http_code}' -X POST "$APP_URL/governor/proposals/$id/approve")" \
+    || die "cannot reach the app at $APP_URL"
+  if [[ "$code" != 200 ]]; then
+    echo "Not applied: $(jq -r '.reason // .how // .' "$RUN_DIR/approve.json")" >&2
+    exit 1
+  fi
+  echo "Applied without restart: generation $(jq -r .generation "$RUN_DIR/approve.json")"
+  cp "$RUN_DIR/proposal.yaml" "$RUN_DIR/addresses.yaml"
+  if [[ -n "$matched" ]]; then echo "${matched%% *}" > "$RUN_DIR/stage"; else echo "custom:governor $id" > "$RUN_DIR/stage"; fi
+  stop_unused_services "$services"
+  say "Now running: app${services:+ $services}${matched:+  (stage ${matched/ --weight / at weight })}"
 }
 
 cmd_diff() {
@@ -301,6 +428,8 @@ Usage: ./demo <command> [args]
   traffic [options]         Send steady /quote load (see ./demo traffic --help).
   evidence                  Show the app's /evidence summary.
   inventory [--json]        Observe the system now: routing, /health of each address, readiness, catalogue.
+  propose                   Ask the governor for the next address table, with the rule and evidence behind it.
+  approve [id]              Approve a proposal (default: the last one). Starts what it needs, then applies it live.
   gate [N]                  Pass only if every comparison has >= N consecutive matches (default 1000) and 0 mismatches.
   status                    Show the active stage, its address table and running containers.
   logs [service]            Follow container logs (evidence records are the app's JSON log lines).
@@ -321,6 +450,8 @@ main() {
     traffic)  exec "$ENV_DIR/scripts/traffic.sh" "$@" ;;
     evidence) curl -fsS "$APP_URL/evidence" | jq . ;;
     inventory) cmd_inventory "$@" ;;
+    propose)  cmd_propose ;;
+    approve)  cmd_approve "$@" ;;
     gate)     exec "$ENV_DIR/scripts/gate.sh" "$@" ;;
     status)   cmd_status ;;
     logs)     compose logs -f "$@" ;;

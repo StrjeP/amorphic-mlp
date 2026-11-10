@@ -1,8 +1,14 @@
 # amorphic-mlp
 
-This demo is active development, this will grow as capabilities are developed, the intention is to provide a step by step guide to recreate the story for yourself.
-
 A minimal, runnable demo of an "amorphic" capability. `pricing-calc` starts out as a Python service, gets re-implemented in Java, earns trust through shadow and canary traffic, and is then folded into the calling app. The full plan is in [docs/amorphic-mlp-plan.md](docs/amorphic-mlp-plan.md). For the high-level narrative, see [docs/story.md](docs/story.md).
+
+## Where it stands
+
+- **Done:** stages 0 to 4 end to end, including the planted bug and its fix. Address tables apply live (hot reload). An inventory observes what is running, and a rule-based governor proposes every move from 1b to 4, each approved by a human.
+- **Next:** governor phase 4 gives the inventory and governor their own addresses and bindings in the address table.
+- **Planned:** a step-by-step guide for recreating the story yourself.
+
+The demo walkthrough, with real captured output, is in [amorphic-demo-env/README.md](amorphic-demo-env/README.md). The progress table in the plan has the detail.
 
 ## Articles
 
@@ -18,7 +24,8 @@ A minimal, runnable demo of an "amorphic" capability. `pricing-calc` starts out 
 | `pricing-calc-java/pricing-calc-service/` | Spring Boot REST wrapper over core | Java 21, Gradle |
 | `amorphic-demo-app/` | Calling app: `/quote`, resolver, shadow/canary, `/evidence` | Java 21, Spring Boot 3, Gradle |
 | `amorphic-inventory/inventory-core/` | The inventory: observes the live table, `/health` and `/evidence` against the catalogue | Java 21, Gradle |
-| `amorphic-demo-env/` | Compose files, per-stage address tables, catalogue, golden vectors, traffic and gate scripts | docker compose, bash |
+| `amorphic-governor/governor-core/` | The governor: applies the rule table to the inventory and proposes the next address table; a human approves | Java 21, Gradle |
+| `amorphic-demo-env/` | Compose files, per-stage address tables, catalogue, governor rules, golden vectors, traffic and gate scripts | docker compose, bash |
 
 The Java modules share one Gradle build at the repo root. The demo app depends on `:pricing-calc-core` as a project, so `mavenLocal()` isn't needed.
 

@@ -1,6 +1,6 @@
 # Catalogue: every version of every capability and every piece of tooling, and where it may run.
-# Static and edited by hand. The inventory reports it; the governor (phase 3)
-# proposes only capability versions that are listed here and not withdrawn.
+# Static and edited by hand. The inventory reports it; the governor proposes only
+# capability versions that are listed here and not withdrawn.
 #
 #   kind       capability: does the business work and is routed by the address table
 #              tooling:    runs the system itself (catalogue, inventory, governor)
@@ -46,5 +46,5 @@ capabilities:
     description: Applies a rule table to the inventory and proposes the next address table. A human approves.
     versions:
       - address: pkg:amorphic/governor@0.1?lang=java
-        locations: [local, remote]
-        planned: "governor phase 3"
+        # In-process in the demo app for now; a remote location comes with governor phase 4.
+        locations: [local]

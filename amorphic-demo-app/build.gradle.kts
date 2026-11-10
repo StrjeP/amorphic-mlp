@@ -16,6 +16,8 @@ dependencies {
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     // The inventory always runs in-process for now; phase 4 adds a remote binding for it.
     implementation(project(":inventory-core"))
+    // The governor also runs in-process for now; phase 4 adds a remote binding for it.
+    implementation(project(":governor-core"))
     if (foldIn) {
         implementation(project(":pricing-calc-core"))
     } else {

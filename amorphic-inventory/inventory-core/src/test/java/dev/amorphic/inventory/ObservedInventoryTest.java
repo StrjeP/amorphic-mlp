@@ -125,11 +125,23 @@ class ObservedInventoryTest {
                     assertThat(e.routedAs()).isEmpty();
                 });
         assertThat(s.catalogue()).filteredOn(e -> e.capability().equals("governor")).singleElement()
-                .satisfies(e -> assertThat(e.planned()).isEqualTo("governor phase 3"));
+                .satisfies(e -> assertThat(e.planned()).isNull());
         assertThat(s.catalogue()).filteredOn(e -> e.address().equals(PY)).singleElement()
                 .satisfies(e -> assertThat(e.kind()).isEqualTo("capability"));
         // Tooling that isn't routed is not a problem.
         assertThat(s.problems()).isEmpty();
+    }
+
+    @Test
+    void reportsPlannedVersions() {
+        var withPlanned = new Catalogue(Map.of("future", new Catalogue.Capability("tooling", "not built",
+                List.of(new Catalogue.Version("pkg:amorphic/future@0.1?lang=java", List.of("local"), null, null,
+                        "some later phase")))));
+        var table = new RoutingView(1, "t", List.of(role("champion", PY, "remote", PY_URL)));
+        var inventory = new ObservedInventory(() -> table, () -> evidence(1, 500), up(PY_URL), () -> withPlanned, 100,
+                Clock.systemUTC());
+        var s = ((Inventory.Observed) inventory.observe(Duration.ofSeconds(1))).snapshot();
+        assertThat(s.catalogue()).singleElement().satisfies(e -> assertThat(e.planned()).isEqualTo("some later phase"));
     }
 
     @Test

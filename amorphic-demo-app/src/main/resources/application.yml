@@ -8,6 +8,9 @@ amorphic:
   inventory:
     # Evidence records the live table needs before the inventory reports ready.
     min-evidence: 100
+  governor:
+    # Overridden in Docker by AMORPHIC_GOVERNOR_RULES=/governor/governor-rules.yaml
+    rules: ../amorphic-demo-env/governor-rules.yaml
 management:
   endpoints:
     web:

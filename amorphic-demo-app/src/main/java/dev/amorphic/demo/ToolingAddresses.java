@@ -4,6 +4,7 @@ package dev.amorphic.demo;
 final class ToolingAddresses {
     static final String INVENTORY = "pkg:amorphic/inventory@0.1?lang=java";
     static final String CATALOGUE = "pkg:amorphic/catalogue@1.0?lang=yaml";
+    static final String GOVERNOR = "pkg:amorphic/governor@0.1?lang=java";
 
     private ToolingAddresses() {}
 }

@@ -1,0 +1,79 @@
+# Governor rule table. Edited by hand; read every time the governor is asked for a proposal.
+#
+# The governor looks at each routed capability, works out its situation, and takes the FIRST
+# rule below whose situation matches. It proposes only when the inventory is ready, and it
+# never applies anything itself: a human approves every proposal.
+#
+#   when     the situation (see list below)
+#   gate     minimum consecutive matches, with zero mismatches, in the current evidence
+#   weight   for canary-below / canary-at-least: the weight the situation is measured against;
+#            for propose: canary, the weight to propose
+#   propose  what to propose
+#   why      shown with the proposal
+#
+# Situations:
+#   shadow-withdrawn        the shadow is a version the catalogue marks withdrawn
+#   mismatch                any comparison has a mismatch
+#   champion-alone-newer    only a champion is routed, and the catalogue has a newer version
+#   shadow-newer            a shadow is routed and it is newer than the champion
+#   canary-below            a canary is routed with weight below `weight`
+#   canary-at-least         a canary is routed with weight of at least `weight`
+#   shadow-older            a shadow is routed and it is older than the champion
+#   champion-alone-remote   only a remote champion is routed, nothing newer exists, and the
+#                           catalogue allows it to run in-process
+#
+# Proposals:
+#   shadow-newest  shadow the newest version (replacing a withdrawn shadow if there is one)
+#   hold           propose nothing, and say why
+#   canary         turn the shadow into a canary, or change the canary's weight
+#   promote        the canary becomes champion; the old champion becomes its shadow
+#   drop-shadow    stop shadowing (the old version can then be stopped)
+#   fold-in        bind the champion in-process (needs the app rebuilt with it)
+rules:
+  - id: replace-withdrawn-shadow
+    when: shadow-withdrawn
+    propose: shadow-newest
+    why: A human withdrew the shadowed version. Shadow the newest version instead.
+
+  - id: hold-on-mismatch
+    when: mismatch
+    propose: hold
+    why: The versions disagree. Nothing moves until the disagreement is understood and fixed.
+
+  - id: start-shadow
+    when: champion-alone-newer
+    propose: shadow-newest
+    why: A newer version is catalogued. Shadow it to gather evidence without serving it.
+
+  - id: shadow-to-canary
+    when: shadow-newer
+    gate: 1000
+    propose: canary
+    weight: 10
+    why: The shadow has matched the champion on enough consecutive calls. Let it serve a small share.
+
+  - id: raise-canary
+    when: canary-below
+    weight: 50
+    gate: 100
+    propose: canary
+    # Only canary calls are compared, so at 10% the bar is lower: about 1 call in 10 counts.
+    why: Every answer the canary served matched. Raise its share.
+
+  - id: promote
+    when: canary-at-least
+    weight: 50
+    gate: 1000
+    propose: promote
+    why: The canary has served half the traffic with every answer matching. Make it champion, and keep the old champion as its shadow.
+
+  - id: deprecate
+    when: shadow-older
+    gate: 1000
+    propose: drop-shadow
+    why: The new champion still matches the old version on every call. Stop shadowing the old version.
+
+  - id: fold-in
+    when: champion-alone-remote
+    propose: fold-in
+    why: The champion stands alone, nothing newer is catalogued, and it may run in-process. Fold it into the app.

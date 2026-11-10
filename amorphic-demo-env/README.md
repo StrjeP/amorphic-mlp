@@ -30,6 +30,8 @@ Some amounts convert to exactly half a penny, for example 10.02 GBP → 12.525 U
 | `./demo traffic [--requests N] [--edge-share PCT]` | Steady load (default 1200 requests). |
 | `./demo evidence` | The `/evidence` summary. |
 | `./demo inventory [--json]` | Observe the system now: routing, `/health` of each address, readiness and the catalogue (see [Inventory](#inventory)). |
+| `./demo propose` | Ask the governor for the next address table, with the rule and evidence behind it (see [Governor](#governor)). |
+| `./demo approve [id]` | A human approves a proposal: start what it needs, then apply it live (or rebuild, for the fold-in). |
 | `./demo gate [N]` | The governor's gate. It passes only with ≥ N consecutive matches (default 1000) and 0 mismatches. |
 | `./demo status` / `logs` / `down` | Show the active stage, follow logs, or stop everything. |
 
@@ -256,7 +258,7 @@ There is no authentication on these; security is out of scope for the MLP.
 
 It compares what it finds with **`catalogue.yaml`**, the hand-edited list of every version and where it may run, and reports **ready** or **not ready**, with the reasons.
 
-The catalogue lists two kinds of entry. **Capabilities** do the business work and are routed by the address table: pricing-calc 1.0, 2.0 (withdrawn) and 2.1. **Tooling** runs the system itself: the catalogue (this file), the inventory, and the governor, which is marked *planned* until phase 3. Tooling isn't in the address table yet, so the inventory reports where it actually runs instead: the inventory in-process in the app, and the catalogue as a file. Phase 4 gives the inventory and governor their own addresses and bindings in the table.
+The catalogue lists two kinds of entry. **Capabilities** do the business work and are routed by the address table: pricing-calc 1.0, 2.0 (withdrawn) and 2.1. **Tooling** runs the system itself: the catalogue (this file), the inventory, and the governor. Tooling isn't in the address table yet, so the inventory reports where it actually runs instead: the inventory and governor in-process in the app, and the catalogue as a file. Phase 4 gives the inventory and governor their own addresses and bindings in the table.
 
 **Ready** means all three of these are true:
 
@@ -264,7 +266,7 @@ The catalogue lists two kinds of entry. **Capabilities** do the business work an
 - the evidence belongs to the table that's live now (it didn't change mid-look);
 - there are at least 100 evidence records (`amorphic.inventory.min-evidence`), enough to judge.
 
-**Problems** are mismatches between the table and the catalogue, such as a withdrawn version still being routed. They are reported, not acted on, and they don't affect readiness. The governor (phase 3) will read both.
+**Problems** are mismatches between the table and the catalogue, such as a withdrawn version still being routed. They are reported, not acted on, and they don't affect readiness. The [governor](#governor) reads both: it proposes nothing until the inventory is ready, and it replaces a withdrawn version first.
 
 ### What `/health` is for
 
@@ -277,6 +279,8 @@ Every service in the demo answers `GET /health` with `{"status":"ok"}`. It does 
 Two reasons for checking this way rather than asking Docker. First, it works the same whether the inventory runs inside the app or as its own service later. Second, it is safe: a `/health` call can only ask, while access to Docker would let a container control the whole machine. It also tests what matters. A container can be "running" while the service in it has crashed or is still starting, but `/health` only answers once requests can be served. `./demo stage` uses the same check to wait for new services before routing to them.
 
 ### Captured output (2026-11-09)
+
+Captured in phase 2. Since phase 3 the governor's tooling line reads `in-process in the demo app` instead of `PLANNED`; it is shown that way below.
 
 Stage 1, after 150 calls. Ready, and it flags 2.0 because the catalogue marks it withdrawn:
 
@@ -300,7 +304,7 @@ Catalogue, capabilities:
 Catalogue, tooling:
   pkg:amorphic/catalogue@1.0?lang=yaml  file /catalogue/catalogue.yaml
   pkg:amorphic/inventory@0.1?lang=java  in-process in the demo app (this inventory)
-  pkg:amorphic/governor@0.1?lang=java  PLANNED (governor phase 3)
+  pkg:amorphic/governor@0.1?lang=java  in-process in the demo app
 ```
 
 Stage 3b with the Java service stopped by hand (`docker compose stop java-pricing`). The table still routes to it, but `/health` gets no answer, so the inventory says why it isn't ready:
@@ -326,6 +330,120 @@ Evidence: 150 calls served in generation 1 (ready needs 100)
 ```
 
 `./demo inventory --json` (or `GET /inventory`) returns the full snapshot. If the inventory can't observe at all, it returns 503 with the reason.
+
+## Governor
+
+The governor looks at what the inventory observes, applies the rule table in [`governor-rules.yaml`](governor-rules.yaml), and proposes the next address table, with the rule and the evidence behind it. **It never applies anything on its own.** A human approves each proposal.
+
+- `./demo propose` asks for a proposal. The answer is one of four:
+  - **a proposal**, with its rule, the reason, the evidence, which stage it is, and the diff;
+  - **waiting**: the inventory isn't ready, or the rule's evidence gate isn't met yet;
+  - **holding**: a rule says nothing should move, for example because versions disagree;
+  - **no proposal**: no rule applies.
+- `./demo approve [id]` approves it (default: the last proposal). It starts or updates the containers the proposed table routes to and waits for their `/health`. Then the governor checks that the table hasn't changed since the proposal, and the table is applied live. Services the new table no longer uses are then stopped. A fold-in proposal can't be applied live, so the governor says it needs a rebuild and `./demo approve` rebuilds the app with it (as `./demo stage 4`).
+
+The rules are tried in order and the first match wins. Each rule names a *situation*, an optional *gate* (consecutive matches with zero mismatches) and what to *propose*:
+
+| Rule | When | Gate | Proposes |
+|---|---|---|---|
+| `replace-withdrawn-shadow` | the shadow is withdrawn in the catalogue | | shadow the newest version |
+| `hold-on-mismatch` | any comparison disagrees | | hold |
+| `start-shadow` | a champion alone, and a newer version is catalogued | | shadow the newest version |
+| `shadow-to-canary` | the shadow is newer than the champion | 1000 | canary at 10% |
+| `raise-canary` | a canary below 50% | 100 | canary at 50% |
+| `promote` | a canary at 50% or more | 1000 | canary becomes champion, old champion becomes shadow |
+| `deprecate` | the shadow is older than the champion | 1000 | stop shadowing |
+| `fold-in` | a remote champion alone, nothing newer, catalogue allows local | | bind it in-process (rebuild) |
+
+The bar for raising the canary is 100, not 1000, because at 10% only about one call in ten is compared.
+
+Two things only a human does:
+
+- **Stage 1.** 2.0 is withdrawn in the catalogue, so the governor never proposes it. The planted bug is shown by hand with `./demo stage 1`, and the governor takes over from there.
+- **The governor's and inventory's own entries.** The governor may never propose a change to either; every proposal is checked, and checked again before it is applied. Only a human can change them, with `./demo apply`. (They join the address table in phase 4.)
+
+### Captured run (2026-11-10)
+
+Stage 1 is set up by hand. From then on there is only `./demo traffic`, `./demo propose` and `./demo approve`.
+
+Before there is any traffic, and again straight after every approval, the governor waits for the inventory to rebuild its picture:
+
+```text
+Waiting: the governor won't propose yet
+  - only 0 evidence records for generation 1 (need 100)
+```
+
+In stage 1, shadow is catching the bug (`./demo gate`: 120 mismatches in 400 calls). The withdrawn-shadow rule comes before the hold rule, so the governor proposes the replacement:
+
+```text
+Proposal g1-replace-withdrawn-shadow
+  rule:      replace-withdrawn-shadow
+  why:       A human withdrew the shadowed version. Shadow the newest version instead.
+  this is:   stage 1b
+
+Proposed change:
+--- live (generation 1)
++++ proposal g1-replace-withdrawn-shadow
+@@ -4,5 +4,5 @@
+       address: pkg:amorphic/pricing-calc@1.0?lang=python
+       binding: { type: remote, url: http://py-pricing:8000 }
+     shadow:
+-      address: pkg:amorphic/pricing-calc@2.0?lang=java
++      address: pkg:amorphic/pricing-calc@2.1?lang=java
+       binding: { type: remote, url: http://java-pricing:8080 }
+
+Nothing changes until a human approves it:  ./demo approve g1-replace-withdrawn-shadow
+```
+
+```text
+$ ./demo approve
+Starting services (the first build of each image takes a few minutes)
+Approving g1-replace-withdrawn-shadow
+Applied without restart: generation 2
+Now running: app py-pricing java-pricing  (stage 1b)
+```
+
+The approval brought Java up as `amorphic/pricing-calc-java:v2.1` before switching the routing. Each later step went the same way:
+
+| From | Proposal | Evidence behind it | Approved to |
+|---|---|---|---|
+| 1b | `g2-shadow-to-canary` | 1200 consecutive matches (needs 1000) | stage 2, canary 10% |
+| 2 at 10% | `g3-raise-canary` | 116 consecutive matches (needs 100) | stage 2, canary 50% |
+| 2 at 50% | `g4-promote` | 1233 consecutive matches (needs 1000) | stage 3 |
+| 3 | `g5-deprecate` | 1200 consecutive matches (needs 1000) | stage 3b; Python stopped |
+| 3b | `g2-fold-in` | champion alone, nothing newer, may run local | stage 4, app rebuilt |
+
+(The fold-in proposal's generation restarts at 2 because the check below was run first.)
+
+**A stale approval is refused.** A fold-in was proposed at generation 1, a table was then applied by hand (generation 2), and the old proposal was approved:
+
+```text
+Not applied: the address table has changed since this proposal (generation 1 -> 2). Ask for a new one.
+```
+
+The fold-in, approved fresh:
+
+```text
+Approved g2-fold-in. The governor says it needs a rebuild:
+  This moves pricing-calc in-process, and the running app wasn't built with it. Rebuild the app with this table (./demo approve does this via ./demo stage 4).
+Rebuilding the app with pricing-calc-core folded in (a binding change can't add code to a running app)
+Stage 4 is up. Running: app
+```
+
+And then:
+
+```text
+No proposal
+  no rule applies (pricing-calc: champion pkg:amorphic/pricing-calc@2.1?lang=java local: folded in, nothing further to propose)
+```
+
+### Governor endpoints
+
+| Endpoint | What it does |
+|---|---|
+| `POST /governor/proposals` | Look at the system now and propose. Returns `status`: `proposed`, `waiting`, `holding` or `no-change` (503 `unavailable` if it can't look). |
+| `GET /governor/proposals/{id}` | A pending proposal, or 404. |
+| `POST /governor/proposals/{id}/approve` | Apply it live (`applied`, with the new generation), or 409 with `needs-rebuild` (and how) or `rejected` (and why). |
 
 ## `/evidence` shape
 
@@ -365,6 +483,7 @@ A comparison matches only when the two values are identical strings, so `12.5` a
 | `compose.yaml` | One compose file for all stages. `./demo` chooses which services run. |
 | `addresses/stage-*.yaml` | One address table per stage, with no comments, so `./demo diff` shows only the real change. |
 | `catalogue.yaml` | Every capability and tooling version, where it may run, and whether it is withdrawn or planned. Edited by hand; read on every inventory observation. |
+| `governor-rules.yaml` | The governor's rule table, tried in order. Edited by hand; read on every proposal. |
 | `golden/vectors.json` | Shared contract test cases (rates, inputs, expected HALF_EVEN results). |
 | `traffic/edge-inputs.txt` | Half-penny inputs where HALF_UP and HALF_EVEN disagree. |
 | `scripts/traffic.sh`, `scripts/gate.sh` | The load generator and the evidence gate. |
