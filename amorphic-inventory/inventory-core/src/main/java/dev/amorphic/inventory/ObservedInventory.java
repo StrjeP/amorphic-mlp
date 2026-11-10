@@ -37,8 +37,9 @@ public final class ObservedInventory implements Inventory {
     }
 
     /**
-     * @param knownPlacements where tooling that the address table doesn't route is running, by address
-     *                        (for example the inventory itself, in-process). Shown against its catalogue entry.
+     * @param knownPlacements where tooling is running when the address table doesn't route it, by address
+     *                        (for example the inventory itself, in-process by default). Shown against its
+     *                        catalogue entry only while it isn't routed.
      */
     public ObservedInventory(Sources.Routing routing, Sources.Evidence evidence, Sources.Health health,
             Supplier<Catalogue> catalogue, int minEvidence, Clock clock, Map<String, String> knownPlacements) {
@@ -143,8 +144,9 @@ public final class ObservedInventory implements Inventory {
                         .filter(r -> r.capability().equals(capability) && r.address().equals(v.address()))
                         .map(RoutingView.Role::role)
                         .toList();
+                // Where it runs is only reported for tooling the table doesn't route; routed, the table says.
                 entries.add(new InventorySnapshot.CatalogueEntry(capability, cat.kind(capability), v.address(),
-                        v.locations(), v.withdrawn(), v.planned(), roles, known.get(v.address())));
+                        v.locations(), v.withdrawn(), v.planned(), roles, roles.isEmpty() ? known.get(v.address()) : null));
             }
         });
         return entries;

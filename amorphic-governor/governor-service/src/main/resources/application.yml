@@ -1,0 +1,14 @@
+server:
+  port: 8080
+amorphic:
+  app:
+    # The demo app: the governor reads its /inventory and sends approved tables to it. Docker: AMORPHIC_APP_URL.
+    url: http://localhost:8080
+  # Overridden in Docker by AMORPHIC_CATALOGUE=/catalogue/catalogue.yaml
+  catalogue: ../../amorphic-demo-env/catalogue.yaml
+  governor:
+    # Overridden in Docker by AMORPHIC_GOVERNOR_RULES=/governor/governor-rules.yaml
+    rules: ../../amorphic-demo-env/governor-rules.yaml
+spring:
+  main:
+    banner-mode: off

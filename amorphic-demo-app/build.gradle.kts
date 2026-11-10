@@ -14,9 +14,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
-    // The inventory always runs in-process for now; phase 4 adds a remote binding for it.
+    // The inventory and governor run in-process, or remotely as their own services, as the
+    // address table says. The app carries both: in-process is the default.
     implementation(project(":inventory-core"))
-    // The governor also runs in-process for now; phase 4 adds a remote binding for it.
     implementation(project(":governor-core"))
     if (foldIn) {
         implementation(project(":pricing-calc-core"))

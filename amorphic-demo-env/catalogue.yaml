@@ -2,8 +2,9 @@
 # Static and edited by hand. The inventory reports it; the governor proposes only
 # capability versions that are listed here and not withdrawn.
 #
-#   kind       capability: does the business work and is routed by the address table
-#              tooling:    runs the system itself (catalogue, inventory, governor)
+#   kind       capability: does the business work; the governor proposes its moves
+#              tooling:    runs the system itself (catalogue, inventory, governor). The address table
+#                          routes the inventory and governor too, but only a human moves them
 #   locations  where the version may run: remote (its own service), local (in-process), file
 #   service    for remote: the compose service and URL it is reachable at
 #   withdrawn  set by a human, with the reason, to stop a version being proposed again
@@ -38,13 +39,15 @@ capabilities:
     description: Observes what is running now (live address table, /health of each address, /evidence) against this catalogue. Stores nothing.
     versions:
       - address: pkg:amorphic/inventory@0.1?lang=java
-        # In-process in the demo app for now; a remote location comes with governor phase 4.
-        locations: [local]
+        # local: in-process in the demo app (the default). remote: its own service (inventory-service).
+        locations: [local, remote]
+        service: { name: inventory, url: http://inventory:8080 }
 
   governor:
     kind: tooling
     description: Applies a rule table to the inventory and proposes the next address table. A human approves.
     versions:
       - address: pkg:amorphic/governor@0.1?lang=java
-        # In-process in the demo app for now; a remote location comes with governor phase 4.
-        locations: [local]
+        # local: in-process in the demo app (the default). remote: its own service (governor-service).
+        locations: [local, remote]
+        service: { name: governor, url: http://governor:8080 }

@@ -2,7 +2,7 @@ package dev.amorphic.governor;
 
 /**
  * Where an approved table goes. In-process it applies the table to the app directly; as a separate
- * service it would POST to the app's /admin/address-table.
+ * service it POSTs to the app's /admin/address-table ({@link HttpTableSink}).
  */
 @FunctionalInterface
 public interface TableSink {

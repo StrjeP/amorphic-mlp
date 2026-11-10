@@ -112,6 +112,33 @@ class ObservedInventoryTest {
     }
 
     @Test
+    void routedToolingIsProbedAndShownAsRouted() {
+        String inventoryUrl = "http://inventory:8080";
+        var table = new RoutingView(2, "stage-0.yaml + tooling", List.of(
+                role("champion", PY, "remote", PY_URL),
+                new RoutingView.Role("inventory", "champion", Tooling.INVENTORY_ADDRESS, "remote", inventoryUrl, null),
+                new RoutingView.Role("governor", "champion", Tooling.GOVERNOR_ADDRESS, "local", null, null)));
+        var inventory = new ObservedInventory(() -> table, () -> evidence(2, 500), up(PY_URL), () -> CATALOGUE, 100,
+                Clock.systemUTC(), Tooling.defaultPlacements("catalogue.yaml"));
+        var s = ((Inventory.Observed) inventory.observe(Duration.ofSeconds(1))).snapshot();
+
+        // A remote inventory that doesn't answer /health holds readiness back like any address.
+        assertThat(s.ready()).isFalse();
+        assertThat(s.notReadyBecause()).singleElement().asString().contains(Tooling.INVENTORY_ADDRESS)
+                .contains("not answering /health");
+        assertThat(s.placements()).filteredOn(p -> p.capability().equals("governor")).singleElement()
+                .satisfies(p -> assertThat(p.health().status()).isEqualTo(HealthCheck.Status.IN_PROCESS));
+        // Routed, so the table says where it runs; the default placement isn't shown.
+        assertThat(s.catalogue()).filteredOn(e -> e.capability().equals("inventory")).singleElement()
+                .satisfies(e -> {
+                    assertThat(e.routedAs()).containsExactly("champion");
+                    assertThat(e.runningAs()).isNull();
+                });
+        // Both bindings are allowed by the catalogue.
+        assertThat(s.problems()).isEmpty();
+    }
+
+    @Test
     void showsWhereUnroutedToolingRunsAndWhatIsPlanned() {
         var table = new RoutingView(1, "stage-0.yaml", List.of(role("champion", PY, "remote", PY_URL)));
         var inventory = new ObservedInventory(() -> table, () -> evidence(1, 500), up(PY_URL), () -> CATALOGUE, 100,

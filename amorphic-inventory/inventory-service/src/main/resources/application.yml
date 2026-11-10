@@ -1,0 +1,14 @@
+server:
+  port: 8080
+amorphic:
+  app:
+    # The demo app, whose live address table and evidence the inventory reads. Docker: AMORPHIC_APP_URL.
+    url: http://localhost:8080
+  # Overridden in Docker by AMORPHIC_CATALOGUE=/catalogue/catalogue.yaml
+  catalogue: ../../amorphic-demo-env/catalogue.yaml
+  inventory:
+    # Evidence records the live table needs before the inventory reports ready (as in the app).
+    min-evidence: 100
+spring:
+  main:
+    banner-mode: off

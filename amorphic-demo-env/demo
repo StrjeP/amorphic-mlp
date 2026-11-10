@@ -9,6 +9,7 @@ RUN_DIR="$ENV_DIR/.run"
 APP_URL="${APP_URL:-http://localhost:8080}"
 STAGES="0 1 1b 2 3 3b 4"
 ALL_SERVICES="py-pricing java-pricing"
+TOOLING="inventory governor"
 
 die() { echo "demo: $*" >&2; exit 1; }
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -76,6 +77,8 @@ health_url() {
   case "$1" in
     py-pricing)   echo "http://localhost:8000/health" ;;
     java-pricing) echo "http://localhost:8090/health" ;;
+    inventory)    echo "http://localhost:8100/health" ;;
+    governor)     echo "http://localhost:8110/health" ;;
   esac
 }
 
@@ -144,9 +147,67 @@ stop_unused_services() {
   done
 }
 
+# Tooling entries (inventory, governor) in an address table. Stage files hold only pricing-calc;
+# ./demo keeps the tooling entries in .run/tooling.yaml and adds them to every table it applies,
+# so a stage change never moves the tooling. Only ./demo tooling (or ./demo apply) does.
+
+# Prints a table without its tooling entries ($2 = keep), or only its tooling entries ($2 = tooling).
+split_tooling() {
+  awk -v want="$2" '
+    /^[^ ]/ { tool = 0; if (want == "keep") print; next }
+    /^  [^ ]/ { cap = $1; sub(":$", "", cap); tool = (cap == "inventory" || cap == "governor") }
+    { if ((want == "tooling") == tool) print }' "$1"
+}
+
+# Prints "remote" or "local" for tooling $1 in table file $2 (no entry means local, in-process).
+tooling_mode() {
+  [[ -f "$2" ]] || { echo local; return; }
+  awk -v n="$1:" '/^  [^ ]/ { cur = $1 } cur == n && /type: remote/ { r = 1 } END { print (r ? "remote" : "local") }' "$2"
+}
+
+# Prints the address-table entry for tooling $1 bound $2 (local or remote; addresses as in catalogue.yaml).
+tooling_entry() {
+  printf '  %s:\n    champion:\n      address: pkg:amorphic/%s@0.1?lang=java\n' "$1" "$1"
+  if [[ "$2" == remote ]]; then
+    printf '      binding: { type: remote, url: http://%s:8080 }\n' "$1"
+  else
+    printf '      binding: { type: local }\n'
+  fi
+}
+
+# Prints the tooling services table file $1 binds remote.
+remote_tooling() {
+  local n out=""
+  for n in $TOOLING; do [[ "$(tooling_mode "$n" "$1")" == remote ]] && out="${out:+$out }$n"; done
+  echo "$out"
+}
+
+# Starts the given tooling services, without recreating running ones, and waits for each one's /health.
+start_tooling() {
+  local services="$1" svc
+  [[ -n "$services" ]] || return 0
+  say "Starting tooling services: $services"
+  # shellcheck disable=SC2086
+  quiet_compose up -d --build --no-recreate $services
+  for svc in $services; do wait_for_service "$svc"; done
+}
+
+# Stops the tooling services that aren't in the given list.
+stop_unused_tooling() {
+  local services="$1" svc
+  for svc in $TOOLING; do
+    case " $services " in
+      *" $svc "*) ;;
+      *) quiet_compose rm -sf "$svc" >/dev/null 2>&1 || true ;;
+    esac
+  done
+}
+
 # Prints the stage a table file is, e.g. "1b" or "2 --weight 50", or nothing if it isn't one.
 match_stage() {
-  local f="$1" s w
+  local s w f="$RUN_DIR/match.yaml"
+  # Tooling entries don't change the stage.
+  split_tooling "$1" keep > "$f"
   for s in $STAGES; do
     cmp -s "$f" "$ENV_DIR/addresses/stage-$s.yaml" && { echo "$s"; return; }
   done
@@ -188,6 +249,8 @@ cmd_stage() {
   else
     cp "$src" "$RUN_DIR/addresses.next.yaml"
   fi
+  # Keep the tooling where it is.
+  [[ -f "$RUN_DIR/tooling.yaml" ]] && cat "$RUN_DIR/tooling.yaml" >> "$RUN_DIR/addresses.next.yaml"
   show_change "$RUN_DIR/addresses.next.yaml" "$label"
 
   export JAVA_VERSION
@@ -196,6 +259,7 @@ cmd_stage() {
 
   # 1. Start the services this stage routes to, and wait until each answers /health.
   start_services "$SERVICES"
+  start_tooling "$(remote_tooling "$RUN_DIR/addresses.next.yaml")"
 
   # 2. Switch the app's routing: live if the running build fits, otherwise (re)create the app.
   local current_variant=""
@@ -225,7 +289,9 @@ cmd_stage() {
   # 3. Stop services the new routing no longer uses.
   stop_unused_services "$SERVICES"
 
-  say "Stage $stage is up. Running: app${SERVICES:+ $SERVICES}"
+  local tooling
+  tooling="$(remote_tooling "$RUN_DIR/addresses.yaml")"
+  say "Stage $stage is up. Running: app${SERVICES:+ $SERVICES}${tooling:+ $tooling}"
 }
 
 cmd_apply() {
@@ -240,6 +306,9 @@ cmd_apply() {
   show_change "$file" "$label"
   post_table "$file" "$label" || exit 1
   cp "$file" "$RUN_DIR/addresses.yaml"
+  # Its tooling entries, if any, are now the ones ./demo keeps.
+  split_tooling "$file" tooling > "$RUN_DIR/tooling.yaml"
+  [[ -s "$RUN_DIR/tooling.yaml" ]] || rm -f "$RUN_DIR/tooling.yaml"
   # Name the stage if this is one of the stage tables; otherwise record it as custom.
   case "$name" in
     stage-*.yaml) echo "${name#stage-}" | sed 's/\.yaml$//' > "$RUN_DIR/stage" ;;
@@ -326,6 +395,8 @@ cmd_approve() {
   local services="" url host java_address
   for url in $(jq -r '.toRoles[] | select(.bindingType == "remote") | .url' <<< "$raw"); do
     host="$(sed -E 's|^[a-z]+://([^:/]+).*|\1|' <<< "$url")"
+    # The tooling is already where the table says, and the governor never moves it.
+    case " $TOOLING " in *" $host "*) continue ;; esac
     case " $services " in *" $host "*) ;; *) services="${services:+$services }$host" ;; esac
   done
   java_address="$(jq -r '[.toRoles[] | select((.url // "") | contains("java-pricing")) | .address][0] // empty' <<< "$raw")"
@@ -348,7 +419,43 @@ cmd_approve() {
   cp "$RUN_DIR/proposal.yaml" "$RUN_DIR/addresses.yaml"
   if [[ -n "$matched" ]]; then echo "${matched%% *}" > "$RUN_DIR/stage"; else echo "custom:governor $id" > "$RUN_DIR/stage"; fi
   stop_unused_services "$services"
-  say "Now running: app${services:+ $services}${matched:+  (stage ${matched/ --weight / at weight })}"
+  local tooling
+  tooling="$(remote_tooling "$RUN_DIR/addresses.yaml")"
+  say "Now running: app${services:+ $services}${tooling:+ $tooling}${matched:+  (stage ${matched/ --weight / at weight })}"
+}
+
+cmd_tooling() {
+  local mode="${1:-}" which="${2:-all}" names n m block=""
+  [[ "$mode" == local || "$mode" == remote ]] || die "usage: ./demo tooling <local|remote> [inventory|governor]"
+  case "$which" in
+    all) names="$TOOLING" ;;
+    inventory|governor) names="$which" ;;
+    *) die "usage: ./demo tooling <local|remote> [inventory|governor]" ;;
+  esac
+  app_running && [[ -f "$RUN_DIR/addresses.yaml" ]] || die "the app isn't running. Start a stage first, e.g. ./demo stage 0"
+
+  # The live table with new tooling entries. Only a human moves the tooling; the governor can't.
+  for n in $TOOLING; do
+    m="$(tooling_mode "$n" "$RUN_DIR/addresses.yaml")"
+    case " $names " in *" $n "*) m="$mode" ;; esac
+    block="$block$(tooling_entry "$n" "$m")"$'\n'
+  done
+  { split_tooling "$RUN_DIR/addresses.yaml" keep; printf '%s' "$block"; } > "$RUN_DIR/addresses.next.yaml"
+  local label="tooling: inventory $(tooling_mode inventory "$RUN_DIR/addresses.next.yaml"), governor $(tooling_mode governor "$RUN_DIR/addresses.next.yaml")"
+  show_change "$RUN_DIR/addresses.next.yaml" "$label"
+
+  local remote
+  remote="$(remote_tooling "$RUN_DIR/addresses.next.yaml")"
+  start_tooling "$remote"
+  say "Applying the table ($label)"
+  if ! post_table "$RUN_DIR/addresses.next.yaml" "$label"; then
+    rm -f "$RUN_DIR/addresses.next.yaml"
+    die "not applied; the tooling stays where it was"
+  fi
+  mv "$RUN_DIR/addresses.next.yaml" "$RUN_DIR/addresses.yaml"
+  printf '%s' "$block" > "$RUN_DIR/tooling.yaml"
+  stop_unused_tooling "$remote"
+  echo "This is a new address table, so evidence starts again: the governor waits for fresh evidence before proposing."
 }
 
 cmd_diff() {
@@ -430,6 +537,9 @@ Usage: ./demo <command> [args]
   inventory [--json]        Observe the system now: routing, /health of each address, readiness, catalogue.
   propose                   Ask the governor for the next address table, with the rule and evidence behind it.
   approve [id]              Approve a proposal (default: the last one). Starts what it needs, then applies it live.
+  tooling <local|remote> [inventory|governor]
+                            Move the inventory and/or governor in-process (local) or to their own services
+                            (remote). Human-only: the governor never proposes this. Stage changes keep it.
   gate [N]                  Pass only if every comparison has >= N consecutive matches (default 1000) and 0 mismatches.
   status                    Show the active stage, its address table and running containers.
   logs [service]            Follow container logs (evidence records are the app's JSON log lines).
@@ -452,6 +562,7 @@ main() {
     inventory) cmd_inventory "$@" ;;
     propose)  cmd_propose ;;
     approve)  cmd_approve "$@" ;;
+    tooling)  cmd_tooling "$@" ;;
     gate)     exec "$ENV_DIR/scripts/gate.sh" "$@" ;;
     status)   cmd_status ;;
     logs)     compose logs -f "$@" ;;

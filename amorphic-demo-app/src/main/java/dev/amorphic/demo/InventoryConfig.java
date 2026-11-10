@@ -9,6 +9,7 @@ import dev.amorphic.inventory.HttpHealthProbe;
 import dev.amorphic.inventory.Inventory;
 import dev.amorphic.inventory.ObservedInventory;
 import dev.amorphic.inventory.RoutingView;
+import dev.amorphic.inventory.Tooling;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -19,8 +20,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Runs the inventory in-process. Its sources read the app's live table and evidence directly;
- * health is probed over HTTP because the addresses it checks are remote.
+ * The inventory, routed by the address table's {@code inventory} entry ({@link RoutedInventory}).
+ * In-process, its sources read the app's live table and evidence directly; health is probed over
+ * HTTP because the addresses it checks are remote. As its own service it reads the same things
+ * over HTTP (inventory-service).
  */
 @Configuration
 class InventoryConfig {
@@ -30,7 +33,7 @@ class InventoryConfig {
             @Value("${amorphic.catalogue}") String catalogue,
             @Value("${amorphic.inventory.min-evidence}") int minEvidence) {
         Path cataloguePath = Path.of(catalogue);
-        return new ObservedInventory(
+        Inventory local = new ObservedInventory(
                 () -> routingView(pricingCalc.current()),
                 () -> evidenceView(evidence.summary()),
                 new HttpHealthProbe(),
@@ -38,10 +41,9 @@ class InventoryConfig {
                 () -> Catalogue.load(cataloguePath),
                 minEvidence,
                 Clock.systemUTC(),
-                // Tooling the address table doesn't route yet: say where it actually runs.
-                Map.of(ToolingAddresses.INVENTORY, "in-process in the demo app (this inventory)",
-                        ToolingAddresses.GOVERNOR, "in-process in the demo app",
-                        ToolingAddresses.CATALOGUE, "file " + cataloguePath));
+                // Where the tooling runs when the address table doesn't route it.
+                Tooling.defaultPlacements(cataloguePath.toString()));
+        return new RoutedInventory(() -> pricingCalc.current().table(), local);
     }
 
     static RoutingView routingView(ReloadablePricingCalc.Applied applied) {

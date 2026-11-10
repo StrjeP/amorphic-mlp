@@ -3,7 +3,8 @@ plugins {
 }
 
 // The governor: applies a rule table to the inventory and proposes the next address table.
-// Plain library (no Spring) so it can run in-process in the app or behind its own service.
+// Plain library (no Spring) so it can run in-process in the app or behind its own service
+// (governor-service). RemoteGovernor is the client for the service.
 version = "0.1.0"
 
 dependencies {

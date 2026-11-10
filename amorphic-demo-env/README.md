@@ -32,6 +32,7 @@ Some amounts convert to exactly half a penny, for example 10.02 GBP → 12.525 U
 | `./demo inventory [--json]` | Observe the system now: routing, `/health` of each address, readiness and the catalogue (see [Inventory](#inventory)). |
 | `./demo propose` | Ask the governor for the next address table, with the rule and evidence behind it (see [Governor](#governor)). |
 | `./demo approve [id]` | A human approves a proposal: start what it needs, then apply it live (or rebuild, for the fold-in). |
+| `./demo tooling <local\|remote> [inventory\|governor]` | Move the inventory and/or governor in-process or to their own services (see [Where the tooling runs](#where-the-tooling-runs)). Only a human does this. Stage changes keep the tooling where it is. |
 | `./demo gate [N]` | The governor's gate. It passes only with ≥ N consecutive matches (default 1000) and 0 mismatches. |
 | `./demo status` / `logs` / `down` | Show the active stage, follow logs, or stop everything. |
 
@@ -258,7 +259,7 @@ There is no authentication on these; security is out of scope for the MLP.
 
 It compares what it finds with **`catalogue.yaml`**, the hand-edited list of every version and where it may run, and reports **ready** or **not ready**, with the reasons.
 
-The catalogue lists two kinds of entry. **Capabilities** do the business work and are routed by the address table: pricing-calc 1.0, 2.0 (withdrawn) and 2.1. **Tooling** runs the system itself: the catalogue (this file), the inventory, and the governor. Tooling isn't in the address table yet, so the inventory reports where it actually runs instead: the inventory and governor in-process in the app, and the catalogue as a file. Phase 4 gives the inventory and governor their own addresses and bindings in the table.
+The catalogue lists two kinds of entry. **Capabilities** do the business work and are routed by the address table: pricing-calc 1.0, 2.0 (withdrawn) and 2.1. **Tooling** runs the system itself: the catalogue (this file), the inventory, and the governor. The address table can route the inventory and governor too (see [Where the tooling runs](#where-the-tooling-runs)), and then the inventory reports them like any routed address. With no entry they run in-process in the app, and the inventory says so. The catalogue is a file.
 
 **Ready** means all three of these are true:
 
@@ -360,7 +361,7 @@ The bar for raising the canary is 100, not 1000, because at 10% only about one c
 Two things only a human does:
 
 - **Stage 1.** 2.0 is withdrawn in the catalogue, so the governor never proposes it. The planted bug is shown by hand with `./demo stage 1`, and the governor takes over from there.
-- **The governor's and inventory's own entries.** The governor may never propose a change to either; every proposal is checked, and checked again before it is applied. Only a human can change them, with `./demo apply`. (They join the address table in phase 4.)
+- **The governor's and inventory's own entries.** The governor may never propose a change to either; every proposal is checked, and checked again before it is applied. Only a human can change them, with `./demo tooling` or `./demo apply`.
 
 ### Captured run (2026-11-10)
 
@@ -445,6 +446,86 @@ No proposal
 | `GET /governor/proposals/{id}` | A pending proposal, or 404. |
 | `POST /governor/proposals/{id}/approve` | Apply it live (`applied`, with the new generation), or 409 with `needs-rebuild` (and how) or `rejected` (and why). |
 
+## Where the tooling runs
+
+The inventory and governor have addresses in the address table, like pricing-calc. Each has one entry, a champion, bound `local` (in-process in the app) or `remote` (its own service). With no entry, it runs in-process. The call sites don't change: `./demo inventory` and `./demo propose` still call the app's `/inventory` and `/governor/...`, and the app sends each call where the live table says, as it does for `/quote`.
+
+```bash
+./demo tooling remote              # both to their own services (inventory :8100, governor :8110)
+./demo tooling local governor      # just the governor back in-process
+./demo tooling local               # both back in-process
+```
+
+`./demo tooling` starts the services the new table needs, waits for their `/health`, applies the table live, and stops the ones it no longer uses. Stage files hold only pricing-calc. `./demo` adds the current tooling entries to every table it applies, so `./demo stage` and `./demo approve` never move the tooling, and neither can the governor. Moving the tooling is a new table, so evidence starts again and the governor waits for fresh evidence.
+
+As services:
+
+- **The inventory service** observes exactly what the in-process one does. It reads the app's `/admin/address-table` and `/evidence` over HTTP, probes `/health`, and reads the same catalogue. It stores nothing.
+- **The governor service** asks the app's `/inventory` (which the app routes to wherever the inventory is) and sends approved tables to the app's `/admin/address-table`. Its pending proposals live in the service, so moving the governor drops them; they would be stale anyway, because moving it is a new table.
+- Both answer `/health`, so the inventory checks them like any remote address. A tooling service that is down holds readiness back, and the error says which hop failed.
+- Every call hands on its deadline, so a chain of remote calls finishes within the caller's time.
+
+### Captured run (2026-11-10)
+
+Stage 1b, both moved out:
+
+```text
+$ ./demo tooling remote
+Address table change (1b -> tooling: inventory remote, governor remote):
+@@ -6,3 +6,11 @@
+     shadow:
+       address: pkg:amorphic/pricing-calc@2.1?lang=java
+       binding: { type: remote, url: http://java-pricing:8080 }
++  inventory:
++    champion:
++      address: pkg:amorphic/inventory@0.1?lang=java
++      binding: { type: remote, url: http://inventory:8080 }
++  governor:
++    champion:
++      address: pkg:amorphic/governor@0.1?lang=java
++      binding: { type: remote, url: http://governor:8080 }
+
+Starting tooling services: inventory governor
+Applying the table (tooling: inventory remote, governor remote)
+Applied without restart: generation 2
+```
+
+After 1,200 calls the inventory service reports the tooling as routed and up:
+
+```text
+Inventory: READY  (generation 2, table from tooling: inventory remote, governor remote)
+
+Routing and health:
+  champion pkg:amorphic/pricing-calc@1.0?lang=python  remote  UP (3 ms)
+  shadow   pkg:amorphic/pricing-calc@2.1?lang=java  remote  UP (3 ms)
+  champion pkg:amorphic/inventory@0.1?lang=java  remote  UP (4 ms)
+  champion pkg:amorphic/governor@0.1?lang=java  remote  UP (5 ms)
+```
+
+The governor service proposed `g2-shadow-to-canary` (stage 2), with the tooling entries unchanged, and `./demo approve` applied it through the service (generation 3).
+
+With the inventory service stopped, nothing pretends. Each hop is named:
+
+```text
+$ ./demo inventory
+Inventory unavailable: inventory at http://inventory:8080: unreachable: connection refused or host not found
+$ ./demo propose
+The governor couldn't look at the system: inventory unavailable: inventory at http://app:8080: inventory at http://inventory:8080: unreachable: connection refused or host not found
+```
+
+Then `./demo tooling local governor`, `./demo stage 3b`, and an approved fold-in. The rebuilt app kept the inventory remote and the governor in-process:
+
+```text
+Inventory: READY  (generation 1, table from /config/addresses.yaml)
+
+Routing and health:
+  champion pkg:amorphic/pricing-calc@2.1?lang=java  local  IN PROCESS
+  champion pkg:amorphic/inventory@0.1?lang=java  remote  UP (6 ms)
+  champion pkg:amorphic/governor@0.1?lang=java  local  IN PROCESS
+```
+
+`./demo quote 732.98` served 916.22 with the `local` binding, and `./demo tooling local` stopped the last tooling container.
+
 ## `/evidence` shape
 
 `./demo gate` relies on this shape. `generation` is the address table generation the counts belong to.
@@ -480,11 +561,11 @@ A comparison matches only when the two values are identical strings, so `12.5` a
 | Path | Contents |
 |---|---|
 | `demo` | The stage switcher and demo commands. |
-| `compose.yaml` | One compose file for all stages. `./demo` chooses which services run. |
+| `compose.yaml` | One compose file for all stages, including the inventory and governor services. `./demo` chooses which services run. |
 | `addresses/stage-*.yaml` | One address table per stage, with no comments, so `./demo diff` shows only the real change. |
 | `catalogue.yaml` | Every capability and tooling version, where it may run, and whether it is withdrawn or planned. Edited by hand; read on every inventory observation. |
 | `governor-rules.yaml` | The governor's rule table, tried in order. Edited by hand; read on every proposal. |
 | `golden/vectors.json` | Shared contract test cases (rates, inputs, expected HALF_EVEN results). |
 | `traffic/edge-inputs.txt` | Half-penny inputs where HALF_UP and HALF_EVEN disagree. |
 | `scripts/traffic.sh`, `scripts/gate.sh` | The load generator and the evidence gate. |
-| `.run/` | The active stage and its rendered address table (gitignored). |
+| `.run/` | The active stage, its rendered address table, and the tooling entries `./demo` adds to every table (`tooling.yaml`). Gitignored. |

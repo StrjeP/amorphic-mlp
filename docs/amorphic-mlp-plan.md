@@ -12,7 +12,7 @@ Handover plan for building a minimal, runnable demo of an "amorphic" system. A c
 ## Terms (used in code and docs)
 
 - **Address**: a PURL-style identity for a capability version, qualified by language, e.g. `pkg:amorphic/pricing-calc@1.0?lang=python`.
-- **Binding**: how an address is reached, either `remote` (an HTTP URL) or `local` (an in-process bean).
+- **Binding**: how an address is reached, either `remote` (an HTTP URL) or `local` (an in-process bean). The inventory and governor are bound the same way.
 - **Role**: `champion` (its answer is served), `shadow` (called and compared, answer discarded), `canary` (served for a % of calls; on those calls the champion is called as the comparison, so every call still produces evidence).
 - **Governor**: whatever changes the address table between stages. In the MLP, a rule table proposes each change from the inventory and the evidence, and a human approves it (`./demo propose`, `./demo approve`). Stage 1, and anything touching the governor's or inventory's own entries, is done by hand (`./demo stage`, `./demo apply`).
 - **Evidence record**: one JSON record per call stating what served, what shadowed, and whether they matched.
@@ -25,12 +25,12 @@ Handover plan for building a minimal, runnable demo of an "amorphic" system. A c
 | Governor phase 1: hot reload. Address tables apply live; each table is a new evidence generation | Done |
 | Governor phase 2: catalogue and inventory, observed through `/health` | Done |
 | Governor phase 3: the governor proposes each move from 1b to 4 and a human approves it | Done |
-| Governor phase 4: the inventory and governor get their own addresses and bindings (`local` or `remote`) in the address table, with no change at their call sites | Next |
+| Governor phase 4: the inventory and governor get their own addresses and bindings (`local` or `remote`) in the address table, with no change at their call sites | Done |
 | A step-by-step guide for recreating the story yourself | Not started |
 
 ## Components
 
-All six live in this monorepo as top-level directories. The Java projects (core, service, demo app, inventory and governor) share one Gradle build at the repo root (`./gradlew`).
+All six live in this monorepo as top-level directories. The Java projects (pricing core and service, demo app, inventory core and service, governor core and service) share one Gradle build at the repo root (`./gradlew`).
 
 ### 1. `pricing-calc-py`: incumbent Python service
 - Python 3.12, FastAPI, uvicorn. Dockerfile (arm64-friendly).
@@ -71,11 +71,11 @@ All six live in this monorepo as top-level directories. The Java projects (core,
 - `README.md`: a step-by-step live demo script with the expected output at each stage, and the `/evidence` JSON shape the gate relies on.
 
 ### 5. `amorphic-inventory`: catalogue and inventory (governor phase 2)
-- `amorphic-demo-env/catalogue.yaml`: static, in git, edited by hand. Lists every version of every capability (`kind: capability`, e.g. pricing-calc) and of the tooling (`kind: tooling`: catalogue, inventory, governor), where it may run (`remote`, `local`, `file`), its service URL, an optional `withdrawn` reason, and an optional `planned` note for anything not built yet. 2.0 is marked withdrawn. The inventory and governor may run only `local` until phase 4. The inventory reports where unrouted tooling actually runs.
+- `amorphic-demo-env/catalogue.yaml`: static, in git, edited by hand. Lists every version of every capability (`kind: capability`, e.g. pricing-calc) and of the tooling (`kind: tooling`: catalogue, inventory, governor), where it may run (`remote`, `local`, `file`), its service URL, an optional `withdrawn` reason, and an optional `planned` note for anything not built yet. 2.0 is marked withdrawn. The inventory and governor may run `local` or `remote`. The inventory reports where unrouted tooling actually runs.
 - `inventory-core`: plain-Java library (no Spring) so it can run in-process or behind its own service later. Its `Inventory` interface is remote-shaped: `observe(timeout)` returns a value, `Observed(snapshot)` or `Unavailable(reason)`, never an exception or shared state.
 - Each observation reads the live address table, probes `GET /health` on every remote address in it (in parallel, within the deadline), reads `/evidence`, and checks the result against the catalogue. Nothing is stored.
 - **Ready** = every remote address answers `/health`, the evidence generation matches the live table's, and there are at least N evidence records (default 100). **Problems** (a withdrawn version routed, a binding the catalogue doesn't allow, an address not in the catalogue) are reported but don't affect readiness.
-- For now it runs inside the demo app (`GET /inventory`, `./demo inventory`). Giving it its own address and binding is phase 4.
+- The address table routes it (phase 4): `local` (or no entry) runs it in the demo app; `remote` calls `inventory-service`, which observes the same things over HTTP (the app's `/admin/address-table` and `/evidence`). The call site, `GET /inventory` (`./demo inventory`), doesn't change. `RemoteInventory` is the client.
 - Observation uses `/health` probes, not the Docker socket (agreed design): it works the same in-process or remote, and a probe can only ask.
 
 ### 6. `amorphic-governor`: the governor (governor phase 3)
@@ -86,7 +86,8 @@ All six live in this monorepo as top-level directories. The Java projects (core,
 - It never proposes a change to the governor's or inventory's own entries (checked on proposal and again before applying). Those are human-only, via `./demo apply`.
 - Stage 1 stays manual: 2.0 is withdrawn in the catalogue, so the governor never proposes it.
 - The governor proposes tables; it doesn't run containers. `./demo approve` starts what a proposal routes to (waiting for `/health`) before approving, and stops what it no longer uses afterwards.
-- For now it runs in-process in the demo app (`/governor/...`). Its own address and binding come in phase 4.
+- The address table routes it (phase 4): `local` (or no entry) runs it in the demo app; `remote` calls `governor-service`, which reads the app's `/inventory` (routed in turn) and sends approved tables to `/admin/address-table`. The call sites, `/governor/...`, don't change. `RemoteGovernor` is the client, and `GovernorHttp` defines the shapes both sides use.
+- Only a human moves the tooling (`./demo tooling local|remote [inventory|governor]`). Stage files hold only pricing-calc, and `./demo` adds the current tooling entries to every table it applies.
 
 ## Stages
 
@@ -164,7 +165,7 @@ capabilities:
 ## Out of scope for the MLP
 
 - An autonomous governor. The governor proposes and a human approves every move; stage 1 is still set up by hand.
-- Service mesh, gateway and service discovery. (The catalogue is a static file, and the inventory and governor run inside the demo app; none is a service yet.)
+- Service mesh, gateway and service discovery. (The catalogue is a static file. The inventory and governor can run as services, but they are found by a URL in the address table, not by discovery.)
 - Writes and state migration (the capability is a pure function on purpose).
 - Persistence of evidence beyond process memory and logs.
 - Security and auth.
@@ -172,5 +173,5 @@ capabilities:
 ## Later, not now
 
 - Persist evidence records as proper topology records.
-- Give the inventory and governor their own addresses and bindings, so either can run as its own service (governor phase 4). Promote the catalogue to a service.
+- Promote the catalogue to a service with its own address.
 - Reverse move: extract an in-process module back out to a remote service.
