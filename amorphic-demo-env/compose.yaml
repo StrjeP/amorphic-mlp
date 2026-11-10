@@ -14,11 +14,14 @@ services:
     environment:
       AMORPHIC_ADDRESSES: /config/addresses.yaml
       AMORPHIC_CATALOGUE: /catalogue/catalogue.yaml
+      AMORPHIC_GOVERNOR_RULES: /governor/governor-rules.yaml
     volumes:
       # ./demo renders the active stage's address table into .run/
       - ./.run:/config:ro
       # The static catalogue the inventory reports against; edits apply on the next observation.
       - ./catalogue.yaml:/catalogue/catalogue.yaml:ro
+      # The governor's rule table; edits apply on the next proposal.
+      - ./governor-rules.yaml:/governor/governor-rules.yaml:ro
 
   py-pricing:
     image: amorphic/pricing-calc-py:1.0

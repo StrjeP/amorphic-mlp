@@ -40,6 +40,7 @@ class InventoryConfig {
                 Clock.systemUTC(),
                 // Tooling the address table doesn't route yet: say where it actually runs.
                 Map.of(ToolingAddresses.INVENTORY, "in-process in the demo app (this inventory)",
+                        ToolingAddresses.GOVERNOR, "in-process in the demo app",
                         ToolingAddresses.CATALOGUE, "file " + cataloguePath));
     }
 

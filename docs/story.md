@@ -1,8 +1,8 @@
 # The story: one call, many homes
 
-This is the high-level account of how the demo's stages connect. For the build detail, see [amorphic-mlp-plan.md](amorphic-mlp-plan.md).
+This is the high-level account of how the demo's stages connect. For the build detail and what is done so far, see [amorphic-mlp-plan.md](amorphic-mlp-plan.md).
 
-The demo app has one line of code that matters: `PricingCalc.convert(...)`. That line never changes. What changes is where the call goes, and that is decided by a small address table that a person edits between stages. The demo moves the call's home from one place to another, one cautious step at a time. Evidence from each step is what allows the next one.
+The demo app has one line of code that matters: `PricingCalc.convert(...)`. That line never changes. What changes is where the call goes, and that is decided by a small address table. At first a person edits it between stages; later a governor proposes each edit from the evidence and a person approves it. The demo moves the call's home from one place to another, one cautious step at a time. Evidence from each step is what allows the next one.
 
 ## Stage 0: Baseline
 
@@ -41,4 +41,4 @@ The last move changes the shape of the system. The Java logic was built as a pla
 - **The call site stays fixed and the address moves.** Each stage is a different address table behind the same line of code.
 - **Trust is earned in order.** Java's answers are compared before they are served (shadow), then Java serves a share of traffic (canary), then all of it (champion), and finally it runs in-process (local). Each step relies on evidence from the one before.
 - **The planted bug is the point.** When stage 1 fails, the demo is working. The process catches a small, plausible difference that code review would likely miss, and the fix comes with a test so the lesson stays learned.
-- **A person decides and the evidence informs.** Nothing advances automatically. A human reads the gate's result and edits the table, which keeps the MLP simple and keeps responsibility visible.
+- **A person decides and the evidence informs.** Nothing advances automatically. At first a human reads the gate's result and edits the table. With the governor, the rules propose each move from the evidence, and a human still approves every one, which keeps responsibility visible.
