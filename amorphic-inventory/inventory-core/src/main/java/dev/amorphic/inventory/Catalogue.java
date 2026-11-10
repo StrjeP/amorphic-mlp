@@ -49,6 +49,8 @@ public record Catalogue(Map<String, Capability> capabilities) {
                 throw new IllegalArgumentException("catalogue " + path + " has no 'capabilities'");
             }
             return c;
+        } catch (java.nio.file.NoSuchFileException e) {
+            throw new IllegalArgumentException("cannot read catalogue " + path + ": file not found", e);
         } catch (IOException e) {
             throw new IllegalArgumentException("cannot read catalogue " + path + ": " + e.getMessage(), e);
         }

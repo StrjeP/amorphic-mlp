@@ -1,5 +1,7 @@
 # Running the demo
 
+New here? Start with the [step-by-step guide](../docs/guide.md), which walks through all of this in order. This page is the reference.
+
 Everything runs from this directory with one command, `./demo`. A stage is a different address table plus a different set of running containers. The app's code is the same in every stage. For the narrative, see [../docs/story.md](../docs/story.md).
 
 The outputs below were captured from a real run on 2026-11-06. Request IDs, timestamps and the exact counts change on every run, because the traffic is random.
@@ -281,7 +283,7 @@ Two reasons for checking this way rather than asking Docker. First, it works the
 
 ### Captured output (2026-11-09)
 
-Captured in phase 2. Since phase 3 the governor's tooling line reads `in-process in the demo app` instead of `PLANNED`; it is shown that way below.
+Captured in phase 2, and three lines have changed since. The governor's tooling line read `PLANNED` until phase 3; it is shown below as it reads now. Since phase 4 the inventory and governor lines add "(no address-table entry, so the default)", and the catalogue is read from `/env/catalogue.yaml`.
 
 Stage 1, after 150 calls. Ready, and it flags 2.0 because the catalogue marks it withdrawn:
 

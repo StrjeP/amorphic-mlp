@@ -5,9 +5,8 @@ A minimal, runnable demo of an "amorphic" capability. `pricing-calc` starts out 
 ## Where it stands
 
 - **Done:** stages 0 to 4 end to end, including the planted bug and its fix. Address tables apply live (hot reload). An inventory observes what is running, and a rule-based governor proposes every move from 1b to 4, each approved by a human. The inventory and governor have their own addresses in the table, so either runs in-process or as its own service.
-- **Planned:** a step-by-step guide for recreating the story yourself.
 
-The demo walkthrough, with real captured output, is in [amorphic-demo-env/README.md](amorphic-demo-env/README.md). The progress table in the plan has the detail.
+**To run it yourself, follow the [step-by-step guide](docs/guide.md).** It takes about 45 minutes and needs only Docker, git, curl and jq. The [demo README](amorphic-demo-env/README.md) is the full reference, with more captured runs, and the progress table in the plan has the detail.
 
 ## Articles
 

@@ -26,7 +26,7 @@ Handover plan for building a minimal, runnable demo of an "amorphic" system. A c
 | Governor phase 2: catalogue and inventory, observed through `/health` | Done |
 | Governor phase 3: the governor proposes each move from 1b to 4 and a human approves it | Done |
 | Governor phase 4: the inventory and governor get their own addresses and bindings (`local` or `remote`) in the address table, with no change at their call sites | Done |
-| A step-by-step guide for recreating the story yourself | Not started |
+| A step-by-step guide for recreating the story yourself ([guide.md](guide.md)), checked against a fresh clone | Done |
 
 ## Components
 

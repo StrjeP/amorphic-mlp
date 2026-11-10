@@ -3,13 +3,13 @@ server:
 amorphic:
   # Overridden in Docker by AMORPHIC_ADDRESSES=/config/addresses.yaml
   addresses: ../amorphic-demo-env/addresses/stage-0.yaml
-  # Overridden in Docker by AMORPHIC_CATALOGUE=/catalogue/catalogue.yaml
+  # Overridden in Docker by AMORPHIC_CATALOGUE=/env/catalogue.yaml
   catalogue: ../amorphic-demo-env/catalogue.yaml
   inventory:
     # Evidence records the live table needs before the inventory reports ready.
     min-evidence: 100
   governor:
-    # Overridden in Docker by AMORPHIC_GOVERNOR_RULES=/governor/governor-rules.yaml
+    # Overridden in Docker by AMORPHIC_GOVERNOR_RULES=/env/governor-rules.yaml
     rules: ../amorphic-demo-env/governor-rules.yaml
 management:
   endpoints:

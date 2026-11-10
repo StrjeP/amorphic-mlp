@@ -1,6 +1,6 @@
 # The story: one call, many homes
 
-This is the high-level account of how the demo's stages connect. For the build detail and what is done so far, see [amorphic-mlp-plan.md](amorphic-mlp-plan.md).
+This is the high-level account of how the demo's stages connect. For the build detail and what is done so far, see [amorphic-mlp-plan.md](amorphic-mlp-plan.md). To run it yourself, follow the [step-by-step guide](guide.md).
 
 The demo app has one line of code that matters: `PricingCalc.convert(...)`. That line never changes. What changes is where the call goes, and that is decided by a small address table. At first a person edits it between stages; later a governor proposes each edit from the evidence and a person approves it. The demo moves the call's home from one place to another, one cautious step at a time. Evidence from each step is what allows the next one.
 

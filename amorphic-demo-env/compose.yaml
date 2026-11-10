@@ -15,15 +15,16 @@ services:
     ports: ["8080:8080"]
     environment:
       AMORPHIC_ADDRESSES: /config/addresses.yaml
-      AMORPHIC_CATALOGUE: /catalogue/catalogue.yaml
-      AMORPHIC_GOVERNOR_RULES: /governor/governor-rules.yaml
+      # The catalogue (read on every observation) and the governor's rules (read on every proposal),
+      # so hand edits apply straight away.
+      AMORPHIC_CATALOGUE: /env/catalogue.yaml
+      AMORPHIC_GOVERNOR_RULES: /env/governor-rules.yaml
     volumes:
       # ./demo renders the active stage's address table into .run/
       - ./.run:/config:ro
-      # The static catalogue the inventory reports against; edits apply on the next observation.
-      - ./catalogue.yaml:/catalogue/catalogue.yaml:ro
-      # The governor's rule table; edits apply on the next proposal.
-      - ./governor-rules.yaml:/governor/governor-rules.yaml:ro
+      # This directory, not single files: an editor that saves by replacing a file would leave a
+      # single-file mount pointing at the old one.
+      - .:/env:ro
 
   py-pricing:
     image: amorphic/pricing-calc-py:1.0
@@ -43,9 +44,9 @@ services:
     ports: ["8100:8080"]
     environment:
       AMORPHIC_APP_URL: http://app:8080
-      AMORPHIC_CATALOGUE: /catalogue/catalogue.yaml
+      AMORPHIC_CATALOGUE: /env/catalogue.yaml
     volumes:
-      - ./catalogue.yaml:/catalogue/catalogue.yaml:ro
+      - .:/env:ro
 
   governor:
     image: amorphic/governor-service:0.1
@@ -55,8 +56,7 @@ services:
     ports: ["8110:8080"]
     environment:
       AMORPHIC_APP_URL: http://app:8080
-      AMORPHIC_CATALOGUE: /catalogue/catalogue.yaml
-      AMORPHIC_GOVERNOR_RULES: /governor/governor-rules.yaml
+      AMORPHIC_CATALOGUE: /env/catalogue.yaml
+      AMORPHIC_GOVERNOR_RULES: /env/governor-rules.yaml
     volumes:
-      - ./catalogue.yaml:/catalogue/catalogue.yaml:ro
-      - ./governor-rules.yaml:/governor/governor-rules.yaml:ro
+      - .:/env:ro
