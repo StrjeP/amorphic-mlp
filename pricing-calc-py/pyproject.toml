@@ -23,3 +23,6 @@ packages = ["src/pricing_calc"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Starlette's test client now prefers httpx2; httpx still works. Silence only that notice
+# until we move the dev dependency over.
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
