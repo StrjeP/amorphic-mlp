@@ -527,6 +527,8 @@ usage() {
   cat <<EOF
 Usage: ./demo <command> [args]
 
+  tour [--no-pause]         The whole story, stage 0 to 4, narrated in plain words (about five minutes).
+
   stage <id> [--weight N]   Bring up a stage ($STAGES). --weight sets the canary % in stage 2.
                             Routing switches live; the app is rebuilt only to fold core in or out.
   apply <file>              Push an address table to the running app (routing only, no containers).
@@ -557,6 +559,7 @@ main() {
     apply)    cmd_apply "$@" ;;
     diff)     cmd_diff "$@" ;;
     quote)    cmd_quote "$@" ;;
+    tour)     exec "$ENV_DIR/scripts/tour.sh" "$@" ;;
     traffic)  exec "$ENV_DIR/scripts/traffic.sh" "$@" ;;
     evidence) curl -fsS "$APP_URL/evidence" | jq . ;;
     inventory) cmd_inventory "$@" ;;

@@ -4,7 +4,7 @@ This guide takes you through the whole demo on your own machine. A pricing capab
 
 You'll do it twice. In **Part 1** you move the call yourself, one stage at a time, and read the evidence. In **Part 2** a rule-based governor proposes each move from that evidence, and you approve it. **Part 3** moves the tooling itself, and **Part 4** has a few experiments to try.
 
-Allow about 45 minutes. Every output below is real, captured from a fresh clone on 2026-11-10. Request IDs, timings and exact counts change on every run, because the traffic is random.
+Allow about 45 minutes, or five for the [narrated tour](#the-short-version-a-narrated-tour). Every output below is real, captured from a fresh clone on 2026-11-10. Request IDs, timings and exact counts change on every run, because the traffic is random.
 
 For the why behind it, read [the story](story.md) first. For the full reference, see the [demo README](../amorphic-demo-env/README.md).
 
@@ -40,6 +40,48 @@ pricing-calc-java/v2.1
 ```
 
 The first time you start a stage, Docker builds the images it needs. That takes a few minutes per image on a first run. Later runs reuse them.
+
+## The short version: a narrated tour
+
+If you want to see the whole progression before doing it step by step, run the tour. It takes each stage in turn, sends traffic, and says in plain words who answered the customers and what the checks found. It pauses between stages; press Enter to go on.
+
+```bash
+./demo tour
+```
+
+Here is part of a real run (captured on 2026-11-11):
+
+```text
+Stage 1: shadow. Java 2.0 is checked, but serves no one
+Every customer still gets Python's answer. Behind the scenes each request also goes to
+Java 2.0, and the two answers are compared.
+  Sending 1200 customer quotes ... done
+  Customers were answered by: Python 1.0 served 100% (1200)
+  Checks: 1200 answers from Python 1.0 were compared with Java 2.0. 327 disagreed.
+  Verdict: not safe. The new version stays out of customers' way.
+
+  Java 2.0 got 327 prices wrong. No customer saw them, because only Python's answers
+  were sent back.
+  Here's one, asked directly: 732.98 GBP is exactly 916.225 USD, half a penny.
+    Python 1.0 says 916.22   Java 2.0 says 916.23
+```
+
+It ends with a summary:
+
+```text
+What just happened
+  Stage      Who answered customers                 What the evidence said
+  0          Python 1.0 serves everyone             the baseline
+  1          Python serves; Java 2.0 checked        327 wrong answers caught; not safe
+  1b         Python serves; Java 2.1 checked        every answer matched; safe
+  2          Java 10%, Python 90%                   every Java answer matched; safe
+  2 (50%)    Java 50%, Python 50%                   every Java answer matched; safe
+  3          Java 2.1 serves everyone               Python still agrees; safe
+  3b         Java 2.1 alone                         Python switched off
+  4          Java 2.1 inside the app                no pricing service left to run
+```
+
+The rest of this guide does the same moves one at a time, so you can look at each one closely. Run `./demo down` before Part 1, so your output matches the guide's.
 
 ## Look around first
 
