@@ -46,6 +46,8 @@ public record RuleTable(List<Rule> rules) {
                 throw new IllegalArgumentException("rule table " + path + " has no rules");
             }
             return t;
+        } catch (java.nio.file.NoSuchFileException e) {
+            throw new IllegalArgumentException("cannot read rule table " + path + ": file not found", e);
         } catch (IOException e) {
             throw new IllegalArgumentException("cannot read rule table " + path + ": " + e.getMessage(), e);
         }
