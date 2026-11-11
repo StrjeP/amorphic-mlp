@@ -1,6 +1,6 @@
 # amorphic-mlp
 
-The source of truth for scope and stages is `docs/amorphic-mlp-plan.md`. Each of the plan's "repositories" is a top-level directory here. `amorphic-demo-env/README.md` has the demo walkthrough and real captured output. `docs/guide.md` is the step-by-step guide for newcomers, with output captured from a fresh clone; keep it in step with `./demo` when commands or output change.
+The source of truth for scope and stages is `docs/amorphic-mlp-plan.md`. Each of the plan's "repositories" is a top-level directory here. `amorphic-demo-env/README.md` has the demo walkthrough and real captured output. `docs/guide.md` is the step-by-step guide for newcomers, with output captured from a fresh clone; keep it in step with `./demo` when commands or output change. `./demo tour` (`scripts/tour.sh`) runs stages 0 to 4 with plain-words narration; keep its wording in step with the story.
 
 - Java: one root Gradle build (`./gradlew build`), toolchain Java 21. Projects are `:pricing-calc-core`, `:pricing-calc-service`, `:amorphic-demo-app`, `:inventory-core`, `:inventory-service`, `:governor-core` and `:governor-service`. The app pulls in core as a project dependency, not via mavenLocal.
 - Fold-in: `-PfoldIn=true` puts core in the app's runtime classpath. Without it, core is `compileOnly`, and a `local` binding fails at startup (`Bindings`, `AddressTableFailureAnalyzer`).

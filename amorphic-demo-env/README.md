@@ -1,6 +1,6 @@
 # Running the demo
 
-New here? Start with the [step-by-step guide](../docs/guide.md), which walks through all of this in order. This page is the reference.
+New here? Start with the [step-by-step guide](../docs/guide.md), which walks through all of this in order. For the story in five minutes, run `./demo tour`. This page is the reference.
 
 Everything runs from this directory with one command, `./demo`. A stage is a different address table plus a different set of running containers. The app's code is the same in every stage. For the narrative, see [../docs/story.md](../docs/story.md).
 
@@ -25,6 +25,7 @@ Some amounts convert to exactly half a penny, for example 10.02 GBP → 12.525 U
 
 | Command | What it does |
 |---|---|
+| `./demo tour [--no-pause]` | The whole story, stage 0 to 4, in about five minutes, narrated in plain words: who answered customers at each stage, what the checks found, and a summary at the end. Pauses between stages. The full output goes to `.run/tour.log`. |
 | `./demo stage <id> [--weight N]` | Bring up a stage: start the services it routes to and wait for their `/health`, print the address-table change, switch the app's routing **without a restart**, then stop services the new routing no longer uses. Only folding core in (stage 4) or out rebuilds the app. Every applied table starts a new evidence generation. |
 | `./demo apply <file>` | Push any address table to the running app. Routing only: it doesn't start or stop containers. A table the app can't honour is rejected and the current routing stays live. |
 | `./demo diff <from> <to>` | Show what the governor changes between two stages. |
@@ -569,5 +570,5 @@ A comparison matches only when the two values are identical strings, so `12.5` a
 | `governor-rules.yaml` | The governor's rule table, tried in order. Edited by hand; read on every proposal. |
 | `golden/vectors.json` | Shared contract test cases (rates, inputs, expected HALF_EVEN results). |
 | `traffic/edge-inputs.txt` | Half-penny inputs where HALF_UP and HALF_EVEN disagree. |
-| `scripts/traffic.sh`, `scripts/gate.sh` | The load generator and the evidence gate. |
+| `scripts/traffic.sh`, `scripts/gate.sh`, `scripts/tour.sh` | The load generator, the evidence gate and the narrated tour. |
 | `.run/` | The active stage, its rendered address table, and the tooling entries `./demo` adds to every table (`tooling.yaml`). Gitignored. |
