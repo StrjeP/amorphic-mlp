@@ -176,3 +176,4 @@ capabilities:
 - Persist evidence records as proper topology records.
 - Promote the catalogue to a service with its own address.
 - Reverse move: extract an in-process module back out to a remote service.
+- Give the app its own address, and define the bill of materials. Today the app has no address and isn't in the catalogue: the address table describes only its outgoing calls, and other parts reach it by plain URL (`http://app:8080`). It needs a new catalogue kind (a host, which is neither a capability nor tooling). Once modules fold in and out, the host is part of the shape too. That makes the bill of materials hard to state: what a running system is made of is no longer fixed at build time. It is what the image was built with (core folded in or not), plus the live table's routes and bindings, at a given generation. First, write up the thinking behind it.
