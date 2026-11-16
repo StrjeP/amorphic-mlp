@@ -3,8 +3,8 @@ FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.gradle \
-    ./gradlew --no-daemon -q :inventory-service:bootJar -x test \
- && cp amorphic-inventory/inventory-service/build/libs/inventory-service-*[0-9].jar /service.jar
+    ./gradlew --no-daemon -q :governor-service:bootJar -x test \
+ && cp amorphic-systems/governor-service/build/libs/governor-service-*[0-9].jar /service.jar
 
 FROM eclipse-temurin:21-jre
 COPY --from=build /service.jar /service.jar
