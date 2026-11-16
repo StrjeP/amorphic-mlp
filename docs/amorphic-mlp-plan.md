@@ -71,7 +71,7 @@ All six live in this monorepo as top-level directories. The Java projects (prici
 - `scripts/gate.sh`: queries `/evidence` and passes only if consecutive matches ≥ N (default 1000) and there are 0 mismatches since the last reset. Each applied address table is a new evidence generation, and that is the reset. Comparisons still running from the previous table are dropped rather than counted. This script is the governor's evidence gate.
 - `README.md`: a step-by-step live demo script with the expected output at each stage, and the `/evidence` JSON shape the gate relies on.
 
-### 5. `amorphic-inventory`: catalogue and inventory (governor phase 2)
+### 5. `amorphic-systems/inventory-core` and `inventory-service`: catalogue and inventory (governor phase 2)
 - `amorphic-demo-env/catalogue.yaml`: static, in git, edited by hand. Lists every version of every capability (`kind: capability`, e.g. pricing-calc) and of the tooling (`kind: tooling`: catalogue, inventory, governor), where it may run (`remote`, `local`, `file`), its service URL, an optional `withdrawn` reason, and an optional `planned` note for anything not built yet. 2.0 is marked withdrawn. The inventory and governor may run `local` or `remote`. The inventory reports where unrouted tooling actually runs.
 - `inventory-core`: plain-Java library (no Spring) so it can run in-process or behind its own service later. Its `Inventory` interface is remote-shaped: `observe(timeout)` returns a value, `Observed(snapshot)` or `Unavailable(reason)`, never an exception or shared state.
 - Each observation reads the live address table, probes `GET /health` on every remote address in it (in parallel, within the deadline), reads `/evidence`, and checks the result against the catalogue. Nothing is stored.
@@ -79,7 +79,7 @@ All six live in this monorepo as top-level directories. The Java projects (prici
 - The address table routes it (phase 4): `local` (or no entry) runs it in the demo app; `remote` calls `inventory-service`, which observes the same things over HTTP (the app's `/admin/address-table` and `/evidence`). The call site, `GET /inventory` (`./demo inventory`), doesn't change. `RemoteInventory` is the client.
 - Observation uses `/health` probes, not the Docker socket (agreed design): it works the same in-process or remote, and a probe can only ask.
 
-### 6. `amorphic-governor`: the governor (governor phase 3)
+### 6. `amorphic-systems/governor-core` and `governor-service`: the governor (governor phase 3)
 - `governor-core`: plain-Java library. Its `Governor` interface is remote-shaped: `propose(timeout)` returns `Proposed`, `Waiting`, `Holding`, `NoChange` or `Unavailable`; `approve(id, timeout)` returns `Applied`, `NeedsRebuild` or `Rejected`.
 - `amorphic-demo-env/governor-rules.yaml`: the rule table, tried in order, first match wins. Each rule names a situation, an optional evidence gate (consecutive matches with zero mismatches) and a proposal. From 1b the rules walk the stages: shadow → canary 10% (gate 1000) → 50% (gate 100, since only canary calls are compared) → promote (1000) → deprecate (1000) → fold-in. Any mismatch holds; a withdrawn shadow is replaced first.
 - It proposes only when the inventory is ready, so after every move it waits for the inventory to rebuild. A proposal records the rule, the reason, the evidence, and the live and proposed tables in the stage-file layout.

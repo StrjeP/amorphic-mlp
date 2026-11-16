@@ -40,7 +40,7 @@ services:
     image: amorphic/inventory-service:0.1
     build:
       context: ..
-      dockerfile: amorphic-inventory/inventory-service/Dockerfile
+      dockerfile: amorphic-systems/inventory-service/Dockerfile
     ports: ["8100:8080"]
     environment:
       AMORPHIC_APP_URL: http://app:8080
@@ -52,7 +52,7 @@ services:
     image: amorphic/governor-service:0.1
     build:
       context: ..
-      dockerfile: amorphic-governor/governor-service/Dockerfile
+      dockerfile: amorphic-systems/governor-service/Dockerfile
     ports: ["8110:8080"]
     environment:
       AMORPHIC_APP_URL: http://app:8080
