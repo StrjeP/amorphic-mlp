@@ -93,8 +93,9 @@ Slice 3 depends on this. A topology record must name exactly what ran, which is 
 
 | Slice | State |
 |---|---|
-| 0 Groundwork | Done, 16 November 2026. Tag `mlp/102` created (not yet pushed) |
-| 1 to 6 | Not started |
+| 0 Groundwork | Done, 16 November 2026. Tag `mlp/102` pushed |
+| 1 Addressing | Ready to start: brief below. Spec 01 settled 16 November 2026 in The Knowledge (`realising/specs/01 - Consistent Addressing.md`), except section 9 (System Bill of Materials, Stephen), which slice 1 doesn't need |
+| 2 to 6 | Not started |
 
 ## Slice 0 brief
 
@@ -135,6 +136,61 @@ A handover for doing slice 0 in Claude Code. It is a move, not a change: no code
 - The text check for demo words.
 - Touching the catalogue, the rules, the stage files or the tour.
 
+## Slice 1 brief
+
+A handover for doing slice 1 in Claude Code. The spec is "01 - Consistent Addressing" in The Knowledge (`realising/specs/`), settled on 16 November 2026 apart from section 9, which slice 1 doesn't need. Read its Decisions list first.
+
+**Goal:** one general `Address` type, and a resolver, in a new framework project. Every place that compares, parses or orders addresses by hand goes through them instead. The tour behaves exactly as before: every address on disk and on screen is unchanged.
+
+### What goes in `amorphic-systems/addressing`
+
+A new Gradle project, `:addressing`, at `amorphic-systems/addressing`, package `dev.amorphic.addressing`. Plain Java, with no dependencies. It is a framework project, so it must not mention pricing: its tests use neutral examples, such as `pkg:amorphic/greeter@1.0.1?lang=java` from the notes.
+
+1. **`Address`**: kind, name, an optional version or range, and qualifiers.
+   - Parses the PURL form `pkg:<kind>/<name>[@<version or range>][?<key>=<value>&...]`. In the demo the kind is always `amorphic`.
+   - Prints the canonical form, with qualifiers sorted by key. Equality is by value.
+   - Says which rung it is on: capability, range, version or implementation (an implementation has at least one qualifier).
+   - `narrows(other)` and `broaden()`. Broadening drops one dimension: qualifiers, then version, then range.
+   - Clear errors for bad input, in the style of today's `'x' is not a valid address (expected ...)`.
+2. **`Version` and `Range`**: a version is a scheme value with one scheme, dotted numbers, which is also the default. Versions compare part by part as numbers, with a missing part read as 0. A range is a wildcard: `2.*` or `*`.
+3. **`Instance`**: names a manifestation, with an identity, the `Address` it realises, and an optional host `Instance`. It is the type only, with tests for the three cases in the spec: an artefact identified by its hash, a deployed service identified by a deployment id, and an in-process part identified by its host plus the part's name. It has no text form yet. Slice 3 decides that, when topology records need it.
+4. **`Resolver`**: chooses one candidate for a requested address.
+   - The highest version that satisfies the request, with qualifiers matching exactly.
+   - A floating request skips withdrawn and planned candidates. A pinned request still resolves to a withdrawn candidate, with a warning in the result.
+   - No match returns an error naming what was asked for and what is available. It never falls back.
+   - Candidates are anything with an `Address` and a withdrawn or planned state, so the resolver doesn't depend on the catalogue.
+   - It takes the caller's preference as a parameter, with one preference for now (highest version).
+
+### Where it replaces string handling
+
+5. **Root build:** add `:addressing` to `settings.gradle.kts`. `:inventory-core`, `:governor-core` and `:amorphic-demo-app` depend on it.
+6. **`inventory-core`:**
+   - `Catalogue` parses each version's address when it loads, so a bad address fails the load with its file and the reason.
+   - `Catalogue.find` matches by `Address`, not text, and gains a `resolve(request)` that uses the `Resolver`.
+   - `ObservedInventory` matches routed roles to catalogue entries by `Address`.
+   - `Tooling`'s three addresses become `Address` values.
+7. **`governor-core`:**
+   - `RuleGovernor.newest()` asks the catalogue to resolve `pkg:amorphic/<capability>@*`. The "can run remote" check stays in the governor: it is about where a version runs, not what it is.
+   - Every `Tables.compareVersions` becomes a `Version` comparison, and `compareVersions` is deleted.
+8. **The demo app:**
+   - Delete `dev.amorphic.demo.pricing.Address` and use `dev.amorphic.addressing.Address`.
+   - `Bindings` reads the `lang` qualifier and the version from it.
+   - The app's tests gain a check that every address in the stage files and the catalogue reads and prints back exactly. That check lives in the demo, not the framework.
+9. **On the wire:** the HTTP and JSON shapes (`RoutingView`, `EvidenceView`, `InventorySnapshot`, the evidence log) keep addresses as canonical text. They are parsed at the edges, and nothing compares the text.
+
+### Verify
+
+- `./gradlew build` and `./gradlew :amorphic-demo-app:bootJar -PfoldIn=true`. `checkFrameworkDependencies` passes with `:addressing` included.
+- `git grep -n "compareVersions\|address().equals\|indexOf('@')"` finds nothing in main code.
+- `./demo tour` runs stages 0 to 4 with the same story, and the governor sequence in the guide's Part 2 proposes the same six steps.
+
+### Not in slice 1
+
+- Resolving a kind alias to its specification's address (spec 4.1). The kind is held as text for now.
+- A text form for `Instance`, and anything that records what ran: that is slice 3.
+- Other version schemes, comparison ranges and other caller preferences (spec section 10).
+- Changing any address on disk, the catalogue format, or the evidence keys.
+
 ## Moving out
 
 **When:** the first time something other than the pricing demo needs the skeleton. Likely candidates are the level 202 Quarkus capability or the reference implementation itself. A second sign is that slices stop changing the skeleton's interfaces.
@@ -152,11 +208,19 @@ A handover for doing slice 0 in Claude Code. It is a move, not a change: no code
 
 Found while checking the move: none of the four projects depends on a demo project. `governor-core` mentions pricing-calc and stage files only in comments (`Tables.java`, `Proposal.java`); the rest mention neither. The demo's files (catalogue, rules, address table) reach the services as configuration, not code. `governor-core`'s version comparison parses address strings by hand, which slice 1 replaces.
 
+16 November 2026, slice 1:
+
+- **Grammar.** An own grammar to spec 01, with PURL read and written as one form of it. No purl library: PURL argues for the concept but is aimed elsewhere (versions are opaque, ranges live in the separate `vers:` spec, and there is no narrowing).
+- **Versions.** A version is a scheme value. One named scheme for now (dotted numbers), used for both versions and ranges, so more can be added without changing `Address`.
+- **Manifestation.** It gets its own address, pointing to the logical address it realises and to the host it runs in, which keeps "it is a" apart from "it is the". So the host (the app) needs an address too. Slice 1 only names these; slice 3 records what ran.
+- **Best match.** The highest version that satisfies the range, with qualifiers matching exactly.
+- **Module.** `amorphic-systems/addressing`, package `dev.amorphic.addressing`.
+
 ## For discussion
 
 1. **Envelope on the wire.** Should the Java service speak the envelope natively while Python goes through an adapter? Or should both go through adapters at first, so slice 2 changes only the app?
 2. **Composition depth.** Is one step enough to show the composer exists, or does the skeleton need two (for example, quote = convert, then add a fee) to show that composition is real?
 3. **Where topology records live.** In memory and logs only, like evidence today, or in a simple append-only file?
-4. **Address grammar.** Should the address parse with purl-spec, or with an own grammar to spec 01 that reads PURL as one form? (Shared grammar, not shared standard.)
+4. **Address grammar.** Should the address parse with purl-spec, or with an own grammar to spec 01 that reads PURL as one form? (Shared grammar, not shared standard.) *Settled for slice 1: see Decided.*
 5. **Slice order.** Should topology come before the envelope, since evidence is already most of the way to a topology record?
-6. **Module names.** One project per concept inside `amorphic-systems/`: what is each one called?
+6. **Module names.** One project per concept inside `amorphic-systems/`: what is each one called? *Settled for slice 1: see Decided.*
