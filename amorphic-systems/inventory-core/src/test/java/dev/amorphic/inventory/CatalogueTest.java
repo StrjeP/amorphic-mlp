@@ -1,8 +1,13 @@
 package dev.amorphic.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.amorphic.addressing.Address;
+import dev.amorphic.addressing.Resolution;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 
 /** The real catalogue in amorphic-demo-env must load and say what the demo relies on. */
@@ -12,7 +17,7 @@ class CatalogueTest {
 
     @Test
     void listsEveryPricingCalcVersion() {
-        assertThat(catalogue.versions("pricing-calc")).extracting(Catalogue.Version::address).containsExactly(
+        assertThat(catalogue.versions("pricing-calc")).extracting(v -> v.address().toString()).containsExactly(
                 "pkg:amorphic/pricing-calc@1.0?lang=python",
                 "pkg:amorphic/pricing-calc@2.0?lang=java",
                 "pkg:amorphic/pricing-calc@2.1?lang=java");
@@ -37,12 +42,40 @@ class CatalogueTest {
 
     @Test
     void twoPointZeroIsWithdrawnAndOnlyTwoPointOneMayRunLocally() {
-        var v20 = catalogue.find("pricing-calc", "pkg:amorphic/pricing-calc@2.0?lang=java").orElseThrow();
-        var v21 = catalogue.find("pricing-calc", "pkg:amorphic/pricing-calc@2.1?lang=java").orElseThrow();
-        var v10 = catalogue.find("pricing-calc", "pkg:amorphic/pricing-calc@1.0?lang=python").orElseThrow();
+        var v20 = catalogue.find("pricing-calc", Address.parse("pkg:amorphic/pricing-calc@2.0?lang=java")).orElseThrow();
+        var v21 = catalogue.find("pricing-calc", Address.parse("pkg:amorphic/pricing-calc@2.1?lang=java")).orElseThrow();
+        var v10 = catalogue.find("pricing-calc", Address.parse("pkg:amorphic/pricing-calc@1.0?lang=python")).orElseThrow();
         assertThat(v20.isWithdrawn()).isTrue();
         assertThat(v21.isWithdrawn()).isFalse();
         assertThat(v21.allows("local")).isTrue();
         assertThat(v10.allows("local")).isFalse();
+    }
+
+    @Test
+    void resolvesTheNewestVersionThatIsNotWithdrawn() {
+        assertThat(catalogue.resolve(Address.parse("pkg:amorphic/pricing-calc@*")).chosen().orElseThrow().address())
+                .hasToString("pkg:amorphic/pricing-calc@2.1?lang=java");
+        // 2.0 is withdrawn: a pinned request still finds it, with a warning.
+        var pinned = (Resolution.Resolved<Catalogue.Version>) catalogue.resolve(
+                Address.parse("pkg:amorphic/pricing-calc@2.0?lang=java"));
+        assertThat(pinned.warnings()).singleElement().asString().contains("withdrawn");
+        assertThat(catalogue.resolve(Address.parse("pkg:amorphic/pricing-calc@3.*")))
+                .isInstanceOfSatisfying(Resolution.NoMatch.class, n -> assertThat(n.reason())
+                        .startsWith("nothing matches pkg:amorphic/pricing-calc@3.*; available: "));
+    }
+
+    @Test
+    void aBadAddressFailsTheLoad(@TempDir Path dir) throws Exception {
+        Path bad = dir.resolve("catalogue.yaml");
+        Files.writeString(bad, """
+                capabilities:
+                  thing:
+                    kind: capability
+                    versions:
+                      - address: pkg:amorphic/thing@one?lang=java
+                        locations: [remote]
+                """);
+        assertThatThrownBy(() -> Catalogue.load(bad)).hasMessageContaining("cannot read catalogue " + bad)
+                .hasMessageContaining("'pkg:amorphic/thing@one?lang=java' is not a valid address");
     }
 }

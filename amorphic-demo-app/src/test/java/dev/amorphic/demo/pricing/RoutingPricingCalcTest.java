@@ -1,5 +1,6 @@
 package dev.amorphic.demo.pricing;
 
+import dev.amorphic.addressing.Address;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

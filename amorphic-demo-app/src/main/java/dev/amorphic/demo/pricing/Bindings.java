@@ -1,5 +1,9 @@
 package dev.amorphic.demo.pricing;
 
+import dev.amorphic.addressing.Address;
+import dev.amorphic.addressing.Version;
+import java.util.Optional;
+
 /** Turns an address-table binding into a {@link PricingEndpoint}, failing fast when it can't be honoured. */
 final class Bindings {
 
@@ -25,7 +29,7 @@ final class Bindings {
     }
 
     private static PricingEndpoint local(Address address) {
-        if (!"java".equals(address.lang())) {
+        if (!address.qualifier("lang").filter("java"::equals).isPresent()) {
             throw new AddressTableException("local binding for " + address + " needs lang=java: only Java can run in-process");
         }
         try {
@@ -35,8 +39,9 @@ final class Bindings {
                     + "is not in this build. Rebuild the app with -PfoldIn=true (./demo stage 4 does this).");
         }
         String coreVersion = LocalPricingEndpoint.coreVersion();
-        if (!coreVersion.equals(address.version())) {
-            throw new AddressTableException("address " + address + " asks for version " + address.version()
+        if (!address.version().equals(Optional.of(Version.parse(coreVersion)))) {
+            throw new AddressTableException("address " + address + " asks for version "
+                    + address.version().map(Version::toString).orElse("none")
                     + ", but the in-process pricing-calc-core is version " + coreVersion);
         }
         return new LocalPricingEndpoint();

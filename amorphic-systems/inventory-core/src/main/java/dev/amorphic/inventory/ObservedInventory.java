@@ -1,5 +1,7 @@
 package dev.amorphic.inventory;
 
+import dev.amorphic.addressing.Address;
+import dev.amorphic.addressing.AddressException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,7 +30,7 @@ public final class ObservedInventory implements Inventory {
     private final Supplier<Catalogue> catalogue;
     private final int minEvidence;
     private final Clock clock;
-    private final Map<String, String> knownPlacements;
+    private final Map<Address, String> knownPlacements;
     private final ExecutorService probes = Executors.newVirtualThreadPerTaskExecutor();
 
     public ObservedInventory(Sources.Routing routing, Sources.Evidence evidence, Sources.Health health,
@@ -42,7 +44,7 @@ public final class ObservedInventory implements Inventory {
      *                        catalogue entry only while it isn't routed.
      */
     public ObservedInventory(Sources.Routing routing, Sources.Evidence evidence, Sources.Health health,
-            Supplier<Catalogue> catalogue, int minEvidence, Clock clock, Map<String, String> knownPlacements) {
+            Supplier<Catalogue> catalogue, int minEvidence, Clock clock, Map<Address, String> knownPlacements) {
         this.knownPlacements = Map.copyOf(knownPlacements);
         this.routing = routing;
         this.evidence = evidence;
@@ -88,7 +90,14 @@ public final class ObservedInventory implements Inventory {
             if (!h.healthy()) {
                 notReady.add(r.address() + " (" + r.role() + ", " + r.url() + ") is not answering /health: " + h.detail());
             }
-            cat.find(r.capability(), r.address()).ifPresentOrElse(v -> {
+            Address address;
+            try {
+                address = r.parsedAddress();
+            } catch (AddressException e) {
+                problems.add("the " + r.role() + " of " + r.capability() + " has a bad address: " + e.getMessage());
+                continue;
+            }
+            cat.find(r.capability(), address).ifPresentOrElse(v -> {
                 if (v.isWithdrawn()) {
                     problems.add(r.address() + " is routed as " + r.role() + " but is withdrawn: " + v.withdrawn());
                 }
@@ -136,20 +145,28 @@ public final class ObservedInventory implements Inventory {
     }
 
     private static List<InventorySnapshot.CatalogueEntry> catalogueEntries(Catalogue cat, RoutingView table,
-            Map<String, String> known) {
+            Map<Address, String> known) {
         List<InventorySnapshot.CatalogueEntry> entries = new ArrayList<>();
         cat.capabilities().forEach((capability, c) -> {
             for (Catalogue.Version v : cat.versions(capability)) {
                 List<String> roles = table.roles().stream()
-                        .filter(r -> r.capability().equals(capability) && r.address().equals(v.address()))
+                        .filter(r -> r.capability().equals(capability) && sameAddress(r, v.address()))
                         .map(RoutingView.Role::role)
                         .toList();
                 // Where it runs is only reported for tooling the table doesn't route; routed, the table says.
-                entries.add(new InventorySnapshot.CatalogueEntry(capability, cat.kind(capability), v.address(),
+                entries.add(new InventorySnapshot.CatalogueEntry(capability, cat.kind(capability), v.address().toString(),
                         v.locations(), v.withdrawn(), v.planned(), roles, roles.isEmpty() ? known.get(v.address()) : null));
             }
         });
         return entries;
+    }
+
+    private static boolean sameAddress(RoutingView.Role r, Address address) {
+        try {
+            return r.parsedAddress().equals(address);
+        } catch (AddressException e) {
+            return false;
+        }
     }
 
     private static Duration min(Duration a, Duration b) {
