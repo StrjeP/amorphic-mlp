@@ -16,6 +16,7 @@ dependencies {
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     // The inventory and governor run in-process, or remotely as their own services, as the
     // address table says. The app carries both: in-process is the default.
+    implementation(project(":addressing"))
     implementation(project(":inventory-core"))
     implementation(project(":governor-core"))
     if (foldIn) {

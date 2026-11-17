@@ -94,7 +94,7 @@ Slice 3 depends on this. A topology record must name exactly what ran, which is 
 | Slice | State |
 |---|---|
 | 0 Groundwork | Done, 16 November 2026. Tag `mlp/102` pushed |
-| 1 Addressing | Ready to start: brief below. Spec 01 settled 16 November 2026 in The Knowledge (`realising/specs/01 - Consistent Addressing.md`), except section 9 (System Bill of Materials, Stephen), which slice 1 doesn't need |
+| 1 Addressing | Done, 17 November 2026. `:addressing` built to spec 01; the inventory, governor and app resolve through it |
 | 2 to 6 | Not started |
 
 ## Slice 0 brief

@@ -2,6 +2,7 @@ package dev.amorphic.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.amorphic.addressing.Address;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -112,19 +113,27 @@ class ObservedInventoryTest {
     }
 
     @Test
+    void aRoutedAddressThatCannotBeReadIsAProblem() {
+        var table = new RoutingView(2, "custom.yaml", List.of(role("champion", "pricing-calc 2.1", "remote", PY_URL)));
+        var s = observe(table, evidence(2, 500), up(PY_URL));
+        assertThat(s.problems()).singleElement().asString()
+                .contains("the champion of pricing-calc has a bad address").contains("is not a valid address");
+    }
+
+    @Test
     void routedToolingIsProbedAndShownAsRouted() {
         String inventoryUrl = "http://inventory:8080";
         var table = new RoutingView(2, "stage-0.yaml + tooling", List.of(
                 role("champion", PY, "remote", PY_URL),
-                new RoutingView.Role("inventory", "champion", Tooling.INVENTORY_ADDRESS, "remote", inventoryUrl, null),
-                new RoutingView.Role("governor", "champion", Tooling.GOVERNOR_ADDRESS, "local", null, null)));
+                new RoutingView.Role("inventory", "champion", Tooling.INVENTORY_ADDRESS.toString(), "remote", inventoryUrl, null),
+                new RoutingView.Role("governor", "champion", Tooling.GOVERNOR_ADDRESS.toString(), "local", null, null)));
         var inventory = new ObservedInventory(() -> table, () -> evidence(2, 500), up(PY_URL), () -> CATALOGUE, 100,
                 Clock.systemUTC(), Tooling.defaultPlacements("catalogue.yaml"));
         var s = ((Inventory.Observed) inventory.observe(Duration.ofSeconds(1))).snapshot();
 
         // A remote inventory that doesn't answer /health holds readiness back like any address.
         assertThat(s.ready()).isFalse();
-        assertThat(s.notReadyBecause()).singleElement().asString().contains(Tooling.INVENTORY_ADDRESS)
+        assertThat(s.notReadyBecause()).singleElement().asString().contains(Tooling.INVENTORY_ADDRESS.toString())
                 .contains("not answering /health");
         assertThat(s.placements()).filteredOn(p -> p.capability().equals("governor")).singleElement()
                 .satisfies(p -> assertThat(p.health().status()).isEqualTo(HealthCheck.Status.IN_PROCESS));
@@ -142,7 +151,7 @@ class ObservedInventoryTest {
     void showsWhereUnroutedToolingRunsAndWhatIsPlanned() {
         var table = new RoutingView(1, "stage-0.yaml", List.of(role("champion", PY, "remote", PY_URL)));
         var inventory = new ObservedInventory(() -> table, () -> evidence(1, 500), up(PY_URL), () -> CATALOGUE, 100,
-                Clock.systemUTC(), Map.of("pkg:amorphic/inventory@0.1?lang=java", "in-process (this inventory)"));
+                Clock.systemUTC(), Map.of(Address.parse("pkg:amorphic/inventory@0.1?lang=java"), "in-process (this inventory)"));
         var s = ((Inventory.Observed) inventory.observe(Duration.ofSeconds(1))).snapshot();
 
         assertThat(s.catalogue()).filteredOn(e -> e.capability().equals("inventory")).singleElement()
@@ -162,7 +171,7 @@ class ObservedInventoryTest {
     @Test
     void reportsPlannedVersions() {
         var withPlanned = new Catalogue(Map.of("future", new Catalogue.Capability("tooling", "not built",
-                List.of(new Catalogue.Version("pkg:amorphic/future@0.1?lang=java", List.of("local"), null, null,
+                List.of(new Catalogue.Version(Address.parse("pkg:amorphic/future@0.1?lang=java"), List.of("local"), null, null,
                         "some later phase")))));
         var table = new RoutingView(1, "t", List.of(role("champion", PY, "remote", PY_URL)));
         var inventory = new ObservedInventory(() -> table, () -> evidence(1, 500), up(PY_URL), () -> withPlanned, 100,

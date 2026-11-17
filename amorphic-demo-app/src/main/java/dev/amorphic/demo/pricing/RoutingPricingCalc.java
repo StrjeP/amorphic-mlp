@@ -1,5 +1,7 @@
 package dev.amorphic.demo.pricing;
 
+import dev.amorphic.addressing.Address;
+import dev.amorphic.addressing.AddressException;
 import dev.amorphic.demo.evidence.EvidenceRecorder;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -81,7 +83,12 @@ public class RoutingPricingCalc implements PricingCalc {
         if (role.address() == null) {
             throw new AddressTableException("a role in the address table has no address");
         }
-        Address address = Address.parse(role.address());
+        Address address;
+        try {
+            address = Address.parse(role.address());
+        } catch (AddressException e) {
+            throw new AddressTableException(e.getMessage());
+        }
         return new Target(address, role.binding() == null ? null : role.binding().type(),
                 bindings.apply(address, role.binding()));
     }
@@ -116,12 +123,12 @@ public class RoutingPricingCalc implements PricingCalc {
                 evidence.record(call(requestId, amount, from, to, served, role, value, compareWith, other, error));
             });
         }
-        return new Result(value, to, served.address().raw(), served.binding());
+        return new Result(value, to, served.address().toString(), served.binding());
     }
 
     private EvidenceRecorder.Call call(String requestId, BigDecimal amount, String from, String to, Target served,
             String role, BigDecimal value, Target other, BigDecimal otherValue, String error) {
-        return new EvidenceRecorder.Call(generation, clock.instant(), requestId, amount, from, to, served.address().raw(),
-                served.binding(), role, value, other == null ? null : other.address().raw(), otherValue, error);
+        return new EvidenceRecorder.Call(generation, clock.instant(), requestId, amount, from, to, served.address().toString(),
+                served.binding(), role, value, other == null ? null : other.address().toString(), otherValue, error);
     }
 }

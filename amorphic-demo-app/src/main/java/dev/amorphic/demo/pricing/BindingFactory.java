@@ -1,5 +1,6 @@
 package dev.amorphic.demo.pricing;
 
+import dev.amorphic.addressing.Address;
 import java.util.function.BiFunction;
 
 /** Public handle on the default binding factory. */

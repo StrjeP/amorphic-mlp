@@ -1,5 +1,8 @@
 package dev.amorphic.demo.pricing;
 
+import dev.amorphic.addressing.Address;
+import dev.amorphic.addressing.AddressException;
+import dev.amorphic.addressing.Version;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -44,8 +47,8 @@ class BindingsTest {
     void addressParsing() {
         Address a = Address.parse("pkg:amorphic/pricing-calc@2.1?lang=java");
         assertThat(a.name()).isEqualTo("pricing-calc");
-        assertThat(a.version()).isEqualTo("2.1");
-        assertThat(a.lang()).isEqualTo("java");
-        assertThatThrownBy(() -> Address.parse("pricing-calc:2.1")).isInstanceOf(AddressTableException.class);
+        assertThat(a.version()).hasValue(Version.parse("2.1"));
+        assertThat(a.qualifier("lang")).hasValue("java");
+        assertThatThrownBy(() -> Address.parse("pricing-calc:2.1")).isInstanceOf(AddressException.class);
     }
 }

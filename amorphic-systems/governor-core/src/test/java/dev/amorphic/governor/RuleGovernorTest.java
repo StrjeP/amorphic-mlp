@@ -265,12 +265,4 @@ class RuleGovernorTest {
         assertThatThrownBy(() -> Tables.guardHumanOnly(List.of(inv), List.of())).hasMessageContaining("inventory");
         Tables.guardHumanOnly(List.of(inv), List.of(inv));
     }
-
-    @Test
-    void versionsCompareNumerically() {
-        assertThat(Tables.compareVersions(J21, PY)).isPositive();
-        assertThat(Tables.compareVersions(J20, J21)).isNegative();
-        assertThat(Tables.compareVersions("pkg:amorphic/x@2.10?lang=java", "pkg:amorphic/x@2.9?lang=java")).isPositive();
-        assertThat(Tables.compareVersions(J21, J21)).isZero();
-    }
 }
