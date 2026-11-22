@@ -1,5 +1,7 @@
 package dev.amorphic.governor;
 
+import dev.amorphic.addressing.Address;
+import dev.amorphic.addressing.Version;
 import dev.amorphic.inventory.Catalogue;
 import dev.amorphic.inventory.EvidenceView;
 import dev.amorphic.inventory.Inventory;
@@ -8,7 +10,6 @@ import dev.amorphic.inventory.RoutingView;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -181,31 +182,42 @@ public final class RuleGovernor implements Governor {
             return r != null && "remote".equals(r.bindingType());
         }
 
-        /** The newest catalogued version that isn't withdrawn or planned and can run as a service. */
+        /**
+         * The newest catalogued version that isn't withdrawn or planned and can run as a service: the catalogue
+         * resolves the champion's capability at any version. Where it may run is the governor's own condition.
+         */
         Optional<Catalogue.Version> newest() {
-            return cat.versions(capability).stream()
-                    .filter(v -> !v.isWithdrawn() && !v.isPlanned() && v.allows("remote"))
-                    .max(Comparator.comparing(Catalogue.Version::address, Tables::compareVersions));
+            if (champion == null) {
+                return Optional.empty();
+            }
+            Address c = champion.parsedAddress();
+            Address any = Address.of(c.kind(), c.name()).at("*");
+            return cat.resolve(any, v -> v.allows("remote")).chosen();
         }
 
         boolean newerThanChampion(Catalogue.Version v) {
-            return Tables.compareVersions(v.address(), champion.address()) > 0;
+            return v.address().version().orElseThrow().isNewerThan(version(champion));
+        }
+
+        static Version version(RoutingView.Role r) {
+            return r.parsedAddress().version().orElseThrow(
+                    () -> new IllegalStateException(r.address() + " (" + r.role() + ") names no version"));
         }
 
         boolean matches(RuleTable.Rule rule) {
             return switch (rule.when()) {
                 case "shadow-withdrawn" -> shadow != null
-                        && cat.find(capability, shadow.address()).map(Catalogue.Version::isWithdrawn).orElse(false);
+                        && cat.find(capability, shadow.parsedAddress()).map(Catalogue.Version::isWithdrawn).orElse(false);
                 case "mismatch" -> evidence.comparisons().stream().anyMatch(c -> c.mismatches() > 0);
                 case "champion-alone-newer" -> alone() && remote(champion)
                         && newest().map(this::newerThanChampion).orElse(false);
-                case "shadow-newer" -> shadow != null && Tables.compareVersions(shadow.address(), champion.address()) > 0;
+                case "shadow-newer" -> shadow != null && version(shadow).isNewerThan(version(champion));
                 case "canary-below" -> canary != null && canary.weight() != null && canary.weight() < rule.weight();
                 case "canary-at-least" -> canary != null && canary.weight() != null && canary.weight() >= rule.weight();
-                case "shadow-older" -> shadow != null && Tables.compareVersions(shadow.address(), champion.address()) < 0;
+                case "shadow-older" -> shadow != null && version(champion).isNewerThan(version(shadow));
                 case "champion-alone-remote" -> alone() && remote(champion)
                         && newest().map(v -> !newerThanChampion(v)).orElse(true)
-                        && cat.find(capability, champion.address()).map(v -> v.allows("local")).orElse(false);
+                        && cat.find(capability, champion.parsedAddress()).map(v -> v.allows("local")).orElse(false);
                 default -> false;
             };
         }
@@ -252,7 +264,7 @@ public final class RuleGovernor implements Governor {
                         return Optional.empty();
                     }
                     next.add(champion);
-                    next.add(role("shadow", n.get().address(), "remote", n.get().service().url(), null));
+                    next.add(role("shadow", n.get().address().toString(), "remote", n.get().service().url(), null));
                 }
                 case "canary" -> {
                     RoutingView.Role c = canary != null ? canary : shadow;

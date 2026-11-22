@@ -1,5 +1,6 @@
 package dev.amorphic.inventory;
 
+import dev.amorphic.addressing.Address;
 import java.util.Map;
 
 /**
@@ -12,14 +13,14 @@ public final class Tooling {
     public static final String INVENTORY = "inventory";
     public static final String GOVERNOR = "governor";
 
-    public static final String INVENTORY_ADDRESS = "pkg:amorphic/inventory@0.1?lang=java";
-    public static final String GOVERNOR_ADDRESS = "pkg:amorphic/governor@0.1?lang=java";
-    public static final String CATALOGUE_ADDRESS = "pkg:amorphic/catalogue@1.0?lang=yaml";
+    public static final Address INVENTORY_ADDRESS = Address.parse("pkg:amorphic/inventory@0.1?lang=java");
+    public static final Address GOVERNOR_ADDRESS = Address.parse("pkg:amorphic/governor@0.1?lang=java");
+    public static final Address CATALOGUE_ADDRESS = Address.parse("pkg:amorphic/catalogue@1.0?lang=yaml");
 
     private Tooling() {}
 
     /** Where the tooling runs when the address table doesn't route it. Shown against its catalogue entry. */
-    public static Map<String, String> defaultPlacements(String cataloguePath) {
+    public static Map<Address, String> defaultPlacements(String cataloguePath) {
         return Map.of(
                 INVENTORY_ADDRESS, "in-process in the demo app (no address-table entry, so the default)",
                 GOVERNOR_ADDRESS, "in-process in the demo app (no address-table entry, so the default)",

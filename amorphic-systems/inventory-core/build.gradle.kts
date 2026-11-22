@@ -8,6 +8,7 @@ plugins {
 version = "0.1.0"
 
 dependencies {
+    api(project(":addressing"))
     api("com.fasterxml.jackson.core:jackson-databind:2.19.2")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.19.2")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.19.2")

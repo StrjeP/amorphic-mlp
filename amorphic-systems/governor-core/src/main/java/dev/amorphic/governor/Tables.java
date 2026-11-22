@@ -60,30 +60,4 @@ public final class Tables {
             }
         }
     }
-
-    /** "pkg:amorphic/pricing-calc@2.1?lang=java" -> [2, 1]; compares numerically, part by part. */
-    static int compareVersions(String addressA, String addressB) {
-        int[] a = version(addressA);
-        int[] b = version(addressB);
-        for (int i = 0; i < Math.max(a.length, b.length); i++) {
-            int x = i < a.length ? a[i] : 0;
-            int y = i < b.length ? b[i] : 0;
-            if (x != y) {
-                return Integer.compare(x, y);
-            }
-        }
-        return 0;
-    }
-
-    private static int[] version(String address) {
-        int at = address.indexOf('@');
-        int q = address.indexOf('?', at);
-        String v = address.substring(at + 1, q < 0 ? address.length() : q);
-        String[] parts = v.split("\\.");
-        int[] out = new int[parts.length];
-        for (int i = 0; i < parts.length; i++) {
-            out[i] = Integer.parseInt(parts[i].replaceAll("\\D.*", "").isEmpty() ? "0" : parts[i].replaceAll("\\D.*", ""));
-        }
-        return out;
-    }
 }

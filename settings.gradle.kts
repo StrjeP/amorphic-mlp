@@ -4,11 +4,12 @@ plugins {
 
 rootProject.name = "amorphic-mlp"
 
-include("pricing-calc-core", "pricing-calc-service", "amorphic-demo-app", "inventory-core", "inventory-service",
-    "governor-core", "governor-service")
+include("pricing-calc-core", "pricing-calc-service", "amorphic-demo-app", "addressing", "inventory-core",
+    "inventory-service", "governor-core", "governor-service")
 project(":pricing-calc-core").projectDir = file("pricing-calc-java/pricing-calc-core")
 project(":pricing-calc-service").projectDir = file("pricing-calc-java/pricing-calc-service")
 project(":amorphic-demo-app").projectDir = file("amorphic-demo-app")
+project(":addressing").projectDir = file("amorphic-systems/addressing")
 project(":inventory-core").projectDir = file("amorphic-systems/inventory-core")
 project(":governor-core").projectDir = file("amorphic-systems/governor-core")
 project(":inventory-service").projectDir = file("amorphic-systems/inventory-service")
