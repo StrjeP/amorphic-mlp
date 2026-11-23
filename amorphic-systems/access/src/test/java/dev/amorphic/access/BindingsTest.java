@@ -148,4 +148,17 @@ class BindingsTest {
         assertThatThrownBy(() -> new AdapterSpec("GET", "greet", Map.of(), Map.of("m", "t"), GREETING_REPLY))
                 .hasMessageContaining("starting with /");
     }
+
+    /** HTTP/1.1 only: an HTTP/2 upgrade header on every call makes uvicorn (the Python service) log a warning each time. */
+    @Test
+    void remoteAndAdapterNeverAskToUpgradeTheConnection() throws Exception {
+        try (Stub service = new Stub(seen -> seen.path().equals("/invoke")
+                ? new Stub.Answer(200, EnvelopeJson.write(greeter(EnvelopeJson.read(seen.body()))))
+                : new Stub.Answer(200, "{\"message\": \"Hello, Ada\"}"))) {
+            new RemoteBinding(service.url).invoke(GREETER, greet("Ada"));
+            assertThat(service.last.upgrade()).as("remote").isNull();
+            new AdapterBinding(service.url, GREET_GET).invoke(GREETER, greet("Ada"));
+            assertThat(service.last.upgrade()).as("adapter").isNull();
+        }
+    }
 }

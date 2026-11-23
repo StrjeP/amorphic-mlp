@@ -14,7 +14,12 @@ public final class Http {
     /** Time kept back from a deadline for the reply to travel; the callee gets the rest. */
     static final Duration MARGIN = Duration.ofMillis(500);
 
-    private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+    /**
+     * HTTP/1.1 only. The JDK client defaults to HTTP/2, which over plain http sends an {@code Upgrade: h2c} header on
+     * every request; uvicorn (the Python service) logs a warning for each one. Tested in {@code HttpHealthProbeTest}.
+     */
+    static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2))
+            .version(HttpClient.Version.HTTP_1_1).build();
 
     private Http() {}
 
