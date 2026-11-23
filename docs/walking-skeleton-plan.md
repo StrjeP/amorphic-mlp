@@ -252,6 +252,57 @@ A handover for doing slice 2 in Claude Code. Read the slice 2 decisions under "D
 - Python speaking the envelope natively, and the "rewrite to native" story.
 - New Java versions or tags, and any change to addresses, stage files, the tour or the guide's output.
 
+## Slice 3 brief
+
+A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "Decided" first. **Draft, 23 November 2026:** the points marked *Proposed* are open until settled with Stephen, one at a time.
+
+**Goal:** every call leaves a fixed record of exactly what ran, so `/evidence` can show the topology behind any mismatch. The tour behaves as before: same stages, same numbers, same addresses and stage files.
+
+**Why (from "Framework to manage processing through the use of topologies").** A topology is a fixed definition of the resources an activity used: the exact versions and instances. It is like a prepared query against an ad hoc one: the ad hoc call resolves the best route now, and the record keeps what that route was. With it you can replay a call on exactly the same resources, and when a defect is found in one instance, you can find everything it produced.
+
+### Step 0: spec
+
+1. Draft spec "03 - Topology" in The Knowledge (`realising/specs/`), from the note above and this brief, and settle it with Stephen before building. It builds on spec 01 (instances) and spec 02 (causation).
+
+### The shape
+
+2. **A topology is the resolved shape, not the call.** For one call it lists each role (champion, shadow, canary) with its requested address, the address it resolved to, the binding, and the instance that ran it, plus the table generation and the caller (the app's instance). *Proposed:* its id is a hash of that content, so calls that ran on the same shape share one topology, and evidence keyed by topology id still counts like today's address pairs, just more exactly.
+3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the topology id, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
+4. **Instances in text.** *Proposed:* no new address syntax. An instance is written as a small JSON object, `{"identity", "realises", "host"}`, with `realises` as a canonical address and `host` as the host's identity. PURL has nowhere for "realises" or "host" (discussion item 7), and this avoids inventing a form before one is needed.
+5. **Where identities come from (spec 01, section 8).** Whoever deploys a thing assigns its identity.
+   - *Proposed:* `./demo` gives each service it starts an identity made from its name and image id (for example `java-pricing/5f2c1a9e`), so a restart keeps it and a new image makes a new one. It writes them, keyed by binding URL, to `.run/instances.yaml`, and gives the app its own as `AMORPHIC_INSTANCE`.
+   - A folded-in core is a part of the app: `Instance.part(app, "pricing-calc")`.
+   - If a binding has no known instance, the record says so (`"instance": null`) rather than falling back to the URL. A URL is a location, not an identity.
+
+### What goes in `amorphic-systems/`
+
+6. **`:topology`** (`amorphic-systems/topology`, package `dev.amorphic.topology`). Depends on `:addressing` and Jackson only.
+   - `Topology` (generation, caller, roles) with a content-hash `id()`, and `CallRecord` (envelope id, `causedBy`, topology id, time).
+   - `TopologyLog`: append-only JSON lines in one file. `record(call, topology)` writes the topology once and the call every time; `topology(id)` and `calls(topologyId)` read back. It survives a restart: on start it reads the file to learn which topologies it has already written.
+   - `InstanceJson` for the text form in point 4, read and written at the edges.
+
+### In the demo
+
+7. **The app.** `RoutingPricingCalc` builds the topology for each call from the resolved targets and their instances, and hands it to `TopologyLog` with the call. `GET /topology/{id}` returns a topology; `GET /topology/{id}/calls` its calls.
+8. **Evidence.** Counters are keyed by topology id. `/evidence` keeps today's fields (served and shadow addresses come from the topology), and each comparison and `lastMismatch` gains `topology`, the id. The log line gains `topology` too.
+9. **`./demo`.** Writes `.run/instances.yaml` and `AMORPHIC_INSTANCE` as in point 5. The app's records go to `.run/records/topology.jsonl` (a writable mount; the app's view of `.run/` itself stays read-only). Restarting the app keeps the file; `./demo down` removes it with the rest of `.run/`.
+
+### Verify
+
+- `./gradlew build` and `./gradlew :amorphic-demo-app:bootJar -PfoldIn=true`; `checkFrameworkDependencies` passes with `:topology`.
+- `./demo tour` runs stages 0 to 4 with the same story.
+- At stage 1, `/evidence`'s `lastMismatch.topology` resolves through `/topology/{id}` to Java 2.0's instance as the shadow, by identity, not URL.
+- After `docker compose restart app`, the same topology id still resolves.
+- Rebuilding the Java image gives a new instance identity and so a new topology id; restarting the container keeps both.
+
+### Not in slice 3
+
+- Replaying a call from its topology, and finding everything a defective instance produced. The records make both possible; neither is built.
+- The inventory or governor reading topology records. Evidence's governor-facing shape stays the same.
+- A text address form for instances (discussion item 7), and realms (item 8).
+- Carrying the topology id inside the envelope (an aspect). The record points at the envelope instead.
+- Rotating or pruning the records file.
+
 ## Moving out
 
 **When:** the first time something other than the pricing demo needs the skeleton. Likely candidates are the level 202 Quarkus capability or the reference implementation itself. A second sign is that slices stop changing the skeleton's interfaces.
@@ -287,11 +338,15 @@ Found while checking the move: none of the four projects depends on a demo proje
 - **Timings.** Kept by the binding and handed to evidence. A telemetry aspect is for later.
 - **Java images.** Built from the core at the tag and the service shell from the current tree. The version names the core's behaviour (the rounding); the shell is how it is reached. A later version of the story will revisit this (see "Future stories").
 
+23 November 2026, slice 3:
+
+- **Topology records** live in a simple append-only file (JSON lines), so a record that is meant to be fixed outlives the process (discussion item 3).
+
 ## For discussion
 
 1. **Envelope on the wire.** Should the Java service speak the envelope natively while Python goes through an adapter? Or should both go through adapters at first, so slice 2 changes only the app? *Settled for slice 2: see Decided.*
 2. **Composition depth.** Is one step enough to show the composer exists, or does the skeleton need two (for example, quote = convert, then add a fee) to show that composition is real?
-3. **Where topology records live.** In memory and logs only, like evidence today, or in a simple append-only file?
+3. **Where topology records live.** In memory and logs only, like evidence today, or in a simple append-only file? *Settled for slice 3: see Decided.*
 4. **Address grammar.** Should the address parse with purl-spec, or with an own grammar to spec 01 that reads PURL as one form? (Shared grammar, not shared standard.) *Settled for slice 1: see Decided.*
 5. **Slice order.** Should topology come before the envelope, since evidence is already most of the way to a topology record? *Settled: envelope first.*
 6. **Module names.** One project per concept inside `amorphic-systems/`: what is each one called? *Settled for slice 1: see Decided.*
