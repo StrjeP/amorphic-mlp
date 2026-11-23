@@ -266,8 +266,11 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 
 ### The shape
 
-2. **A topology is the resolved shape, not the call.** For one call it lists each role (champion, shadow, canary) with its requested address, the address it resolved to, the binding, and the instance that ran it, plus the table generation and the caller (the app's instance). *Proposed:* its id is a hash of that content, so calls that ran on the same shape share one topology, and evidence keyed by topology id still counts like today's address pairs, just more exactly.
-3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the topology id, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
+2. **A topology is the resolved shape, not the call.** For one call it lists each role (champion, shadow, canary) with its requested address, the address it resolved to, the binding, and the instance that ran it, plus the table generation and the caller (the app's instance). **Settled:** its id is a hash of that content, so calls that ran on the same shape share one topology, and evidence keyed by topology id still counts like today's address pairs, just more exactly.
+   - **A topology has an address,** like everything else: kind `topology`, named after the capability, with the hash as a qualifier, for example `pkg:topology/pricing-calc?hash=5f2c1a9e`. This needs no change to the grammar or `Address`. Broadening it to `pkg:topology/pricing-calc` asks for every topology pricing-calc has run on, which is the question to ask once a defect is found. A topology is always looked up by its exact address, not through the `Resolver` (which picks among versions).
+   - When the composer lands (slice 4), a topology covers a whole plan, and the name becomes the outcome (for example `quote`).
+   - **Later:** the hash as a version under a second version scheme (for example `pkg:topology/pricing-calc@#5f2c1a9e`). That is the second scheme spec 01 defers until one is needed (section 5's symbol idea); it changes spec 01, `Version` and the parser, so not now.
+3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the topology's address, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
 4. **Instances in text.** *Proposed:* no new address syntax. An instance is written as a small JSON object, `{"identity", "realises", "host"}`, with `realises` as a canonical address and `host` as the host's identity. PURL has nowhere for "realises" or "host" (discussion item 7), and this avoids inventing a form before one is needed.
 5. **Where identities come from (spec 01, section 8).** Whoever deploys a thing assigns its identity.
    - *Proposed:* `./demo` gives each service it starts an identity made from its name and image id (for example `java-pricing/5f2c1a9e`), so a restart keeps it and a new image makes a new one. It writes them, keyed by binding URL, to `.run/instances.yaml`, and gives the app its own as `AMORPHIC_INSTANCE`.
@@ -277,23 +280,23 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 ### What goes in `amorphic-systems/`
 
 6. **`:topology`** (`amorphic-systems/topology`, package `dev.amorphic.topology`). Depends on `:addressing` and Jackson only.
-   - `Topology` (generation, caller, roles) with a content-hash `id()`, and `CallRecord` (envelope id, `causedBy`, topology id, time).
-   - `TopologyLog`: append-only JSON lines in one file. `record(call, topology)` writes the topology once and the call every time; `topology(id)` and `calls(topologyId)` read back. It survives a restart: on start it reads the file to learn which topologies it has already written.
+   - `Topology` (generation, caller, roles) with a content-hash `id()` and an `address()` (`pkg:topology/<name>?hash=<id>`), and `CallRecord` (envelope id, `causedBy`, topology address, time).
+   - `TopologyLog`: append-only JSON lines in one file. `record(call, topology)` writes the topology once and the call every time; `topology(address)` and `calls(address)` read back, and `topologies(name)` lists every topology under a broader address. It survives a restart: on start it reads the file to learn which topologies it has already written.
    - `InstanceJson` for the text form in point 4, read and written at the edges.
 
 ### In the demo
 
-7. **The app.** `RoutingPricingCalc` builds the topology for each call from the resolved targets and their instances, and hands it to `TopologyLog` with the call. `GET /topology/{id}` returns a topology; `GET /topology/{id}/calls` its calls.
-8. **Evidence.** Counters are keyed by topology id. `/evidence` keeps today's fields (served and shadow addresses come from the topology), and each comparison and `lastMismatch` gains `topology`, the id. The log line gains `topology` too.
+7. **The app.** `RoutingPricingCalc` builds the topology for each call from the resolved targets and their instances, and hands it to `TopologyLog` with the call. `GET /topology?address=<address>` returns a topology, or, for a broader address such as `pkg:topology/pricing-calc`, the list of them; `GET /topology/calls?address=<address>` returns a topology's calls.
+8. **Evidence.** Counters are keyed by topology id. `/evidence` keeps today's fields (served and shadow addresses come from the topology), and each comparison and `lastMismatch` gains `topology`, its address. The log line gains `topology` too.
 9. **`./demo`.** Writes `.run/instances.yaml` and `AMORPHIC_INSTANCE` as in point 5. The app's records go to `.run/records/topology.jsonl` (a writable mount; the app's view of `.run/` itself stays read-only). Restarting the app keeps the file; `./demo down` removes it with the rest of `.run/`.
 
 ### Verify
 
 - `./gradlew build` and `./gradlew :amorphic-demo-app:bootJar -PfoldIn=true`; `checkFrameworkDependencies` passes with `:topology`.
 - `./demo tour` runs stages 0 to 4 with the same story.
-- At stage 1, `/evidence`'s `lastMismatch.topology` resolves through `/topology/{id}` to Java 2.0's instance as the shadow, by identity, not URL.
-- After `docker compose restart app`, the same topology id still resolves.
-- Rebuilding the Java image gives a new instance identity and so a new topology id; restarting the container keeps both.
+- At stage 1, `/evidence`'s `lastMismatch.topology` resolves through `/topology` to Java 2.0's instance as the shadow, by identity, not URL.
+- After `docker compose restart app`, the same topology address still resolves.
+- Rebuilding the Java image gives a new instance identity and so a new topology address; restarting the container keeps both.
 
 ### Not in slice 3
 
@@ -341,6 +344,7 @@ Found while checking the move: none of the four projects depends on a demo proje
 23 November 2026, slice 3:
 
 - **Topology records** live in a simple append-only file (JSON lines), so a record that is meant to be fixed outlives the process (discussion item 3).
+- **Topology identity and address.** The id is a hash of the topology's content; the topology is addressed like anything else, with the hash as a qualifier (`pkg:topology/pricing-calc?hash=…`). The hash as a second version scheme is noted for later.
 
 ## For discussion
 
