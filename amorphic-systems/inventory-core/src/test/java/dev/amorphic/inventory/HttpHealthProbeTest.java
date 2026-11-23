@@ -13,13 +13,18 @@ import org.junit.jupiter.api.Test;
 class HttpHealthProbeTest {
 
     HttpServer server;
+    volatile String upgrade = "not called";
     String url;
     final HttpHealthProbe probe = new HttpHealthProbe();
 
     @BeforeEach
     void start() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/up/health", ex -> { ex.sendResponseHeaders(200, -1); ex.close(); });
+        server.createContext("/up/health", ex -> {
+            upgrade = ex.getRequestHeaders().getFirst("Upgrade");
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+        });
         server.createContext("/broken/health", ex -> { ex.sendResponseHeaders(500, -1); ex.close(); });
         server.createContext("/slow/health", ex -> {
             try { Thread.sleep(1000); } catch (InterruptedException ignored) { }
@@ -34,6 +39,16 @@ class HttpHealthProbeTest {
     @AfterEach
     void stop() {
         server.stop(0);
+    }
+
+    /** HTTP/1.1 only: an HTTP/2 upgrade header on every probe makes uvicorn (the Python service) log a warning each time. */
+    @Test
+    void probesAndToolingCallsNeverAskToUpgradeTheConnection() throws Exception {
+        probe.check(url + "/up", Duration.ofSeconds(1));
+        assertThat(upgrade).as("health probe").isNull();
+        upgrade = "not called";
+        Http.get(url + "/up/health", Duration.ofSeconds(1));
+        assertThat(upgrade).as("tooling client").isNull();
     }
 
     @Test

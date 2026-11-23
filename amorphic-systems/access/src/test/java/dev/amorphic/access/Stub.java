@@ -11,7 +11,7 @@ final class Stub implements AutoCloseable {
 
     record Answer(int status, String body) {}
 
-    record Seen(String method, String path, String query, String body) {}
+    record Seen(String method, String path, String query, String body, String upgrade) {}
 
     final HttpServer server;
     final String url;
@@ -21,7 +21,8 @@ final class Stub implements AutoCloseable {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", ex -> {
             Seen seen = new Seen(ex.getRequestMethod(), ex.getRequestURI().getPath(), ex.getRequestURI().getRawQuery(),
-                    new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                    new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8),
+                    ex.getRequestHeaders().getFirst("Upgrade"));
             last = seen;
             Answer a = handler.apply(seen);
             byte[] b = a.body().getBytes(StandardCharsets.UTF_8);

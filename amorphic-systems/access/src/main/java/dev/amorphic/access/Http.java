@@ -13,7 +13,12 @@ final class Http {
     static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
     static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
-    private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+    /**
+     * HTTP/1.1 only. The JDK client defaults to HTTP/2, which over plain http sends an {@code Upgrade: h2c} header on
+     * every request; uvicorn (the Python service) logs a warning for each one. Tested in {@code BindingsTest}.
+     */
+    private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT)
+            .version(HttpClient.Version.HTTP_1_1).build();
 
     private Http() {}
 

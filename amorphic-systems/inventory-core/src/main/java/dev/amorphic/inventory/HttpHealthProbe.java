@@ -11,7 +11,8 @@ import java.time.Duration;
 /** Probes {@code GET {url}/health}. Healthy only on HTTP 200 within the timeout. */
 public final class HttpHealthProbe implements Sources.Health {
 
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+    /** HTTP/1.1 only, for the same reason as {@link Http}: no {@code Upgrade: h2c} header on every probe. */
+    private final HttpClient client = Http.CLIENT;
 
     @Override
     public HealthCheck check(String url, Duration timeout) {
