@@ -254,7 +254,7 @@ A handover for doing slice 2 in Claude Code. Read the slice 2 decisions under "D
 
 ## Slice 3 brief
 
-A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "Decided" first. **Draft, 23 November 2026:** the points marked *Proposed* are open until settled with Stephen, one at a time.
+A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "Decided" first. **Draft, 23 November 2026.** The shape is settled with Stephen; spec 03 comes next (step 0).
 
 **Goal:** every call leaves a fixed record of exactly what ran, so `/evidence` can show the topology behind any mismatch. The tour behaves as before: same stages, same numbers, same addresses and stage files.
 
@@ -272,36 +272,49 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
    - **Later:** the hash as a version under a second version scheme (for example `pkg:topology/pricing-calc@#5f2c1a9e`). That is the second scheme spec 01 defers until one is needed (section 5's symbol idea); it changes spec 01, `Version` and the parser, so not now.
 3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the topology's address, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
 4. **Instances in text.** **Settled:** no new address syntax. An instance is written as a small JSON object, `{"identity", "realises", "host"}`, with `realises` as a canonical address and `host` as the host's identity. PURL has nowhere for "realises" or "host" (discussion item 7), and this avoids inventing a form before one is needed.
-5. **Where identities come from (spec 01, section 8).** Whoever deploys a thing assigns its identity.
-   - *Proposed:* `./demo` gives each service it starts an identity made from its name and image id (for example `java-pricing/5f2c1a9e`), so a restart keeps it and a new image makes a new one. It writes them, keyed by binding URL, to `.run/instances.yaml`, and gives the app its own as `AMORPHIC_INSTANCE`.
-   - A folded-in core is a part of the app: `Instance.part(app, "pricing-calc")`.
-   - If a binding has no known instance, the record says so (`"instance": null`) rather than falling back to the URL. A URL is a location, not an identity.
+5. **Instances are declared before they appear (spec 01, section 8).** **Settled:** the system allocates an identity when it declares an instance, not when the instance turns up.
+   - `amorphic-demo-env/instances.yaml` (checked in, beside the catalogue; the inventory's half of it) declares each instance: its `identity`, the address it `realises`, and its `handle` (the binding URL). For example `java-pricing-2.1` realises `pkg:amorphic/pricing-calc@2.1?lang=java` at `http://java-pricing:8080`. Java 2.0 and 2.1 are two declared instances behind the same URL, which is how the demo swaps them.
+   - The app is declared too (`demo-app`, realising `pkg:amorphic/demo-app@0.1`, added to the catalogue). A folded-in core is a part of it: `Instance.part(app, "pricing-calc")`.
+   - `./demo` allocates nothing. It deploys what is declared and passes each service its declared identity (`AMORPHIC_INSTANCE`). The image id is a property of the instance (what it was built from), not its identity, so redeploying the same image keeps the same instance.
+   - **Appearing without a declaration** is allowed only where the catalogue says so: one setting, `accept-undeclared` (false in the demo). When it is true, the thing is recorded as *undeclared*, with what it reported, and is never given a made-up identity. This is the thin form of a namespace configured to accept that pattern.
+
+### The handshake
+
+6. **A service says who it is: `GET /meta`.** Java and Python both gain it. It returns the instance as JSON (point 4): `identity` from `AMORPHIC_INSTANCE`, and `realises` from the code itself (the core's own version), so a lingering 2.0 can't claim to be 2.1 even if it is mislabelled. `/health` stays as it is. Python's `/convert` is untouched.
+7. **Checked when a table is applied, and at startup.** For each remote role, the app reads `/meta` and checks that the service realises the routed address and that its identity is declared for that handle. A mismatch refuses the table, naming both sides, for example: "routed to `pricing-calc@2.1`, but `http://java-pricing:8080` is `java-pricing-2.0`, which realises `pricing-calc@2.0`". No silent fallback (spec 01, section 7). `./demo` waits until `/meta` reports what it deployed before it applies a table.
+8. **Checked on every call where the service speaks the envelope.** Java's reply carries an extra `instance` aspect (`pkg:schema/instance@1.0`, built in; spec 02 allows extra aspects). The topology records who actually answered, not who was expected. A container swapped between calls shows up as a different topology, so evidence keeps it apart. The adapter path (Python) has the handshake only.
 
 ### What goes in `amorphic-systems/`
 
-6. **`:topology`** (`amorphic-systems/topology`, package `dev.amorphic.topology`). Depends on `:addressing` and Jackson only.
+9. **`:envelope`** gains the built-in `pkg:schema/instance@1.0` and `InstanceJson`, the text form in point 4, read and written at the edges.
+10. **`:access`** gains `Meta.read(url)`: `GET {url}/meta` into an `Instance`, over the same HTTP/1.1 client.
+11. **`:inventory-core`** gains `Instances`: loads `instances.yaml` and answers "what is declared for this handle and address?" `Catalogue` gains `acceptUndeclared`. The inventory's snapshot lists declared instances beside what it observes.
+12. **`:topology`** (`amorphic-systems/topology`, package `dev.amorphic.topology`). Depends on `:addressing`, `:envelope` and Jackson only.
    - `Topology` (generation, caller, roles) with a content-hash `id()` and an `address()` (`pkg:topology/<name>?hash=<id>`), and `CallRecord` (envelope id, `causedBy`, topology address, time).
    - `TopologyLog`: append-only JSON lines in one file. `record(call, topology)` writes the topology once and the call every time; `topology(address)` and `calls(address)` read back, and `topologies(name)` lists every topology under a broader address. It survives a restart: on start it reads the file to learn which topologies it has already written.
-   - `InstanceJson` for the text form in point 4, read and written at the edges.
 
 ### In the demo
 
-7. **The app.** `RoutingPricingCalc` builds the topology for each call from the resolved targets and their instances, and hands it to `TopologyLog` with the call. `GET /topology?address=<address>` returns a topology, or, for a broader address such as `pkg:topology/pricing-calc`, the list of them; `GET /topology/calls?address=<address>` returns a topology's calls.
-8. **Evidence.** Counters are keyed by topology id. `/evidence` keeps today's fields (served and shadow addresses come from the topology), and each comparison and `lastMismatch` gains `topology`, its address. The log line gains `topology` too.
-9. **`./demo`.** Writes `.run/instances.yaml` and `AMORPHIC_INSTANCE` as in point 5. The app's records go to `.run/records/topology.jsonl` (a writable mount; the app's view of `.run/` itself stays read-only). Restarting the app keeps the file; `./demo down` removes it with the rest of `.run/`.
+13. **The services.** Java's `InvokeController` adds the `instance` aspect to every reply. Both services serve `/meta`.
+14. **The app.** The handshake runs where tables are applied (`ReloadablePricingCalc`) and at startup; a refused table is reported like today's `AddressTableException`. `RoutingPricingCalc` builds the topology for each call from the resolved targets, the handshake and any `instance` aspect, and hands it to `TopologyLog` with the call. `GET /topology?address=<address>` returns a topology, or, for a broader address such as `pkg:topology/pricing-calc`, the list of them; `GET /topology/calls?address=<address>` returns a topology's calls.
+15. **Evidence.** Counters are keyed by topology id. `/evidence` keeps today's fields (served and shadow addresses come from the topology), and each comparison and `lastMismatch` gains `topology`, its address. The log line gains `topology` too.
+16. **`./demo`.** Passes declared identities as in point 5 and waits on `/meta` as in point 7. The app's records go to `.run/records/topology.jsonl` (a writable mount; the app's view of `.run/` itself stays read-only). Restarting the app keeps the file; `./demo down` removes it with the rest of `.run/`.
 
 ### Verify
 
 - `./gradlew build` and `./gradlew :amorphic-demo-app:bootJar -PfoldIn=true`; `checkFrameworkDependencies` passes with `:topology`.
 - `./demo tour` runs stages 0 to 4 with the same story.
-- At stage 1, `/evidence`'s `lastMismatch.topology` resolves through `/topology` to Java 2.0's instance as the shadow, by identity, not URL.
-- After `docker compose restart app`, the same topology address still resolves.
-- Rebuilding the Java image gives a new instance identity and so a new topology address; restarting the container keeps both.
+- At stage 1, `/evidence`'s `lastMismatch.topology` resolves through `/topology` to `java-pricing-2.0` as the shadow, by identity, not URL.
+- **A lingering 2.0:** with the Java 2.0 container still running, applying a table that shadows to 2.1 is refused, naming both sides.
+- **A swap between calls:** replacing the Java container behind a live table shows up as a new topology on the next call.
+- After `docker compose restart app`, the same topology address still resolves; redeploying the same image keeps the same instance.
 
 ### Not in slice 3
 
 - Replaying a call from its topology, and finding everything a defective instance produced. The records make both possible; neither is built.
 - The inventory or governor reading topology records. Evidence's governor-facing shape stays the same.
+- Services registering themselves in the inventory, metadata beyond identity and realises, and a lifecycle state machine (see "Future stories").
+- The handshake for the tooling services (inventory, governor) when remote.
 - A text address form for instances (discussion item 7), and realms (item 8).
 - Carrying the topology id inside the envelope (an aspect). The record points at the envelope instead.
 - Rotating or pruning the records file.
@@ -345,6 +358,8 @@ Found while checking the move: none of the four projects depends on a demo proje
 
 - **Topology records** live in a simple append-only file (JSON lines), so a record that is meant to be fixed outlives the process (discussion item 3).
 - **Topology identity and address.** The id is a hash of the topology's content; the topology is addressed like anything else, with the hash as a qualifier (`pkg:topology/pricing-calc?hash=…`). The hash as a second version scheme is noted for later.
+- **Declared instances.** The system allocates an identity when it declares an instance (`instances.yaml`), ahead of it appearing; `./demo` allocates nothing. Appearing undeclared is allowed only where the catalogue's `accept-undeclared` says so, and is recorded as undeclared.
+- **Handshake.** Each service reports itself on `GET /meta` (identity, and `realises` from its own code). The app checks every remote role when a table is applied and refuses a mismatch; envelope replies also carry an `instance` aspect, so each call records who actually answered.
 - **Instances in text.** A small JSON object (`identity`, `realises` as a canonical address, `host` as the host's identity), not a new address syntax, since PURL has nowhere for "realises" or "host" (discussion item 7).
 
 ## For discussion
@@ -364,3 +379,4 @@ Stories the framework should be able to tell later. Nothing here is in a slice y
 
 1. **The adapter costs, so go native.** The adapter path records its timings (slice 2). The system notices what the adapter costs and proposes rewriting the service to speak the envelope natively. The build proves the rewrite gives the same answers (golden vectors) and is faster, and, if feasible, estimates the saving in total cost of ownership.
 2. **Versions name the behaviour spec, not the code.** A version should name the specification of how the capability behaves, not a release of one implementation. Retold that way: Python implements pricing-calc 1.0, and the first Java implementation is also 1.0. The rounding mismatch causes a spec update, 1.1 (round HALF_EVEN), with new tests, and Java 1.1 follows. The API contract stays stable; only the behaviour spec changes. Python can then prove it implements 1.1 too. The open question is how it shows that: claim a range (`1.*`), or point to evidence, the commit that adds the tests (the evidence producer) and the passing run, which is what proves it implements 1.1. Evidence is the leaning. This changes the demo's addresses and story, so it is a new version of the story, not a slice.
+3. **Declared before it appears, then governed through its life.** A concept is registered with its ownership and governance (for example `/stephen/data/table/employees`), a specification version is attached to it (inputs, outputs and behaviour), and manifestations are then created against it in a particular place, with a particular technology, language and version. Identity is allocated ahead of appearing; appearing first and registering after is allowed where the namespace is configured to accept it. Each service reports its metadata on its own endpoint (not `/health`) and registers itself in the inventory as it starts. Everything follows one lifecycle state machine, including unmanaged and not deployed, and can report its state. Slice 3 has the thin start: `instances.yaml`, `accept-undeclared` and `/meta`. Links to the realm (discussion item 8).
