@@ -95,7 +95,7 @@ Slice 3 depends on this. A topology record must name exactly what ran, which is 
 |---|---|
 | 0 Groundwork | Done, 16 November 2026. Tag `mlp/102` pushed |
 | 1 Addressing | Done, 17 November 2026. `:addressing` built to spec 01; the inventory, governor and app resolve through it |
-| 2 Envelope and uniform access | Brief written and spec 02 settled, 23 November 2026 |
+| 2 Envelope and uniform access | Done, 23 November 2026. `:envelope` and `:access` built to spec 02; every pricing-calc call goes through `invoke`; Java speaks the envelope, Python is reached through an adapter that records its timings |
 | 3 to 6 | Not started |
 
 ## Slice 0 brief
@@ -226,7 +226,7 @@ A handover for doing slice 2 in Claude Code. Read the slice 2 decisions under "D
 
 ### In the demo
 
-5. **Schemas.** `amorphic-demo-env/schemas/` holds `pricing-calc-convert-request@1.0`, `-reply@1.0` and `-error@1.0` as JSON Schema files, listed in `catalogue.yaml`. Python 1.0 gets `access: adapter` (`GET /convert`, `amount`, `from`, `to` → query, `amount`, `currency` ← body). Java 2.0 and 2.1 get `access: envelope`.
+5. **Schemas.** `amorphic-demo-env/schemas/` holds `pricing-calc-convert-request@1.0` and `-reply@1.0` as JSON Schema files (failures use the framework's built-in `pkg:schema/error@1.0`), listed in `catalogue.yaml`. Python 1.0 gets `access: adapter` (`GET /convert`, `amount`, `from`, `to` → query, `amount`, `currency` ← body). Java 2.0 and 2.1 get `access: envelope`.
 6. **Java service.** `ConvertController` gains `POST /invoke`, using `:envelope`. `GET /convert` and `/health` stay, because the tour asks both services directly for 732.98.
 7. **Java images.** `build_java_image` in `./demo` builds from the current tree, with `pricing-calc-java/pricing-calc-core` taken from the tag (`git archive` HEAD, then overlay core from `refs/tags/pricing-calc-java/<version>`). So 2.0 keeps HALF_UP and its version, and the service shell speaks the envelope. Say this in a comment beside the function.
 8. **The app.**

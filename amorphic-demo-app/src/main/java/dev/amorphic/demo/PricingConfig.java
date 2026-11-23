@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.amorphic.demo.evidence.EvidenceRecorder;
 import dev.amorphic.demo.pricing.AddressTable;
 import dev.amorphic.demo.pricing.BindingFactory;
+import dev.amorphic.inventory.Catalogue;
 import dev.amorphic.demo.pricing.ReloadablePricingCalc;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -26,9 +27,10 @@ class PricingConfig {
      * POST /admin/address-table and are applied without a restart.
      */
     @Bean
-    ReloadablePricingCalc pricingCalc(@Value("${amorphic.addresses}") String addresses, EvidenceRecorder evidence) {
+    ReloadablePricingCalc pricingCalc(@Value("${amorphic.addresses}") String addresses,
+            @Value("${amorphic.catalogue}") String catalogue, EvidenceRecorder evidence) {
         Path path = Path.of(addresses);
-        return new ReloadablePricingCalc(AddressTable.load(path), path.toString(), BindingFactory.DEFAULT,
+        return new ReloadablePricingCalc(AddressTable.load(path), path.toString(), BindingFactory.reading(() -> Catalogue.load(Path.of(catalogue))),
                 Executors.newVirtualThreadPerTaskExecutor(), () -> ThreadLocalRandom.current().nextDouble(),
                 evidence, Clock.systemUTC());
     }

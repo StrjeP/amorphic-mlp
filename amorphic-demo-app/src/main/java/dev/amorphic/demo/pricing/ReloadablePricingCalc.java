@@ -1,5 +1,6 @@
 package dev.amorphic.demo.pricing;
 
+import dev.amorphic.access.Invoker;
 import dev.amorphic.addressing.Address;
 import dev.amorphic.demo.evidence.EvidenceRecorder;
 import java.math.BigDecimal;
@@ -30,7 +31,7 @@ public class ReloadablePricingCalc implements PricingCalc {
 
     private record State(Applied applied, RoutingPricingCalc routing) {}
 
-    private final BiFunction<Address, AddressTable.Binding, PricingEndpoint> bindings;
+    private final BiFunction<Address, AddressTable.Binding, Invoker> bindings;
     private final Executor background;
     private final DoubleSupplier random;
     private final EvidenceRecorder evidence;
@@ -38,7 +39,7 @@ public class ReloadablePricingCalc implements PricingCalc {
     private final AtomicReference<State> state = new AtomicReference<>();
 
     public ReloadablePricingCalc(AddressTable initial, String source,
-            BiFunction<Address, AddressTable.Binding, PricingEndpoint> bindings, Executor background,
+            BiFunction<Address, AddressTable.Binding, Invoker> bindings, Executor background,
             DoubleSupplier random, EvidenceRecorder evidence, Clock clock) {
         this.bindings = bindings;
         this.background = background;

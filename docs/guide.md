@@ -28,7 +28,7 @@ git clone https://github.com/StrjeP/amorphic-mlp.git
 cd amorphic-mlp/amorphic-demo-env
 ```
 
-Check that you have the two version tags. The demo builds each Java version from its tag, so you can replay the bug without changing any code:
+Check that you have the two version tags. The demo builds each Java version's core (the part that does the rounding) from its tag, so you can replay the bug without changing any code:
 
 ```bash
 git tag -l

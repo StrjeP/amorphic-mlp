@@ -9,6 +9,11 @@
 #   service    for remote: the compose service and URL it is reachable at
 #   withdrawn  set by a human, with the reason, to stop a version being proposed again
 #   planned    not built yet; says when it is due
+#   access     for a capability: how a remote version is reached. via: envelope means it speaks the
+#              envelope (POST /invoke); via: adapter means the app wraps its plain API, as the adapter says
+#
+# schemas, at the end, lists the schemas the envelopes' payloads follow, each by address and file.
+# The framework's own schemas (envelope, causation, error) are built in and need no entry.
 capabilities:
   pricing-calc:
     kind: capability
@@ -17,15 +22,26 @@ capabilities:
       - address: pkg:amorphic/pricing-calc@1.0?lang=python
         locations: [remote]
         service: { name: py-pricing, url: http://py-pricing:8000 }
+        # The incumbent doesn't speak the envelope, so the app reaches it through an adapter, unchanged.
+        access:
+          via: adapter
+          adapter:
+            method: GET
+            path: /convert
+            query: { amount: amount, from: from, to: to }
+            reply: { amount: amount, currency: currency }
+            schema: pkg:schema/pricing-calc-convert-reply@1.0
 
       - address: pkg:amorphic/pricing-calc@2.0?lang=java
         locations: [remote]
         service: { name: java-pricing, url: http://java-pricing:8080 }
+        access: { via: envelope }
         withdrawn: "Rounds HALF_UP; shadow caught it disagreeing with 1.0 in stage 1. Replaced by 2.1."
 
       - address: pkg:amorphic/pricing-calc@2.1?lang=java
         locations: [remote, local]
         service: { name: java-pricing, url: http://java-pricing:8080 }
+        access: { via: envelope }
 
   catalogue:
     kind: tooling
@@ -51,3 +67,9 @@ capabilities:
         # local: in-process in the demo app (the default). remote: its own service (governor-service).
         locations: [local, remote]
         service: { name: governor, url: http://governor:8080 }
+
+schemas:
+  - address: pkg:schema/pricing-calc-convert-request@1.0
+    file: schemas/pricing-calc-convert-request-1.0.json
+  - address: pkg:schema/pricing-calc-convert-reply@1.0
+    file: schemas/pricing-calc-convert-reply-1.0.json

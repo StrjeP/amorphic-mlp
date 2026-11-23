@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/pricing-calc-convert-reply@1.0",
+  "title": "The converted amount, rounded to 2 decimal places",
+  "type": "object",
+  "required": ["amount", "currency"],
+  "additionalProperties": false,
+  "properties": {
+    "amount": { "type": "string", "description": "A decimal number with 2 decimal places, as text, e.g. \"916.23\"" },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+  }
+}

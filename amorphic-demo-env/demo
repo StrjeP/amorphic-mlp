@@ -46,19 +46,32 @@ addresses_file() {
   echo "$f"
 }
 
-# Builds the Java service image from its git tag, so the working tree never has to change.
+# Builds the Java service image for a version. The version names the core's behaviour (the rounding), so
+# pricing-calc-java/pricing-calc-core comes from the git tag pricing-calc-java/<version>: 2.0 keeps its
+# HALF_UP bug exactly as tagged. Everything else, including the service shell that speaks the envelope
+# (POST /invoke), comes from the current commit (HEAD). A later version of the story will give the
+# shell its own versions; see "Future stories" in docs/walking-skeleton-plan.md.
+# The image is labelled with what it was built from, so it is rebuilt when the tag or the shell changes.
 build_java_image() {
   local version="$1" tag="pricing-calc-java/$1" image="amorphic/pricing-calc-java:$1"
-  if [[ "${REBUILD:-0}" != 1 ]] && docker image inspect "$image" >/dev/null 2>&1; then
-    return
-  fi
   git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
     || die "git tag '$tag' not found. Create it once Java $version is built (see docs/amorphic-mlp-plan.md, build order)."
-  say "Building $image from tag $tag"
+  local key
+  key="$(git -C "$REPO_ROOT" rev-parse "refs/tags/$tag^{tree}" HEAD:pricing-calc-java/pricing-calc-service \
+    HEAD:amorphic-systems/envelope HEAD:amorphic-systems/addressing HEAD:settings.gradle.kts HEAD:build.gradle.kts \
+    | git hash-object --stdin)"
+  if [[ "${REBUILD:-0}" != 1 ]] \
+    && [[ "$(docker image inspect -f '{{index .Config.Labels "dev.amorphic.built-from"}}' "$image" 2>/dev/null)" == "$key" ]]; then
+    return
+  fi
+  say "Building $image: core from tag $tag, service shell from the current commit"
   local tmp
   tmp="$(mktemp -d)"
-  git -C "$REPO_ROOT" archive "refs/tags/$tag" | tar -x -C "$tmp"
-  docker build -t "$image" -f "$tmp/pricing-calc-java/pricing-calc-service/Dockerfile" "$tmp" \
+  git -C "$REPO_ROOT" archive HEAD | tar -x -C "$tmp"
+  rm -rf "$tmp/pricing-calc-java/pricing-calc-core"
+  git -C "$REPO_ROOT" archive "refs/tags/$tag" pricing-calc-java/pricing-calc-core | tar -x -C "$tmp"
+  docker build -t "$image" --label "dev.amorphic.built-from=$key" \
+    -f "$tmp/pricing-calc-java/pricing-calc-service/Dockerfile" "$tmp" \
     || { rm -rf "$tmp"; die "docker build failed for $image"; }
   rm -rf "$tmp"
 }
@@ -547,7 +560,7 @@ Usage: ./demo <command> [args]
   logs [service]            Follow container logs (evidence records are the app's JSON log lines).
   down                      Stop everything and forget the active stage.
 
-Environment: APP_URL (default http://localhost:8080), REBUILD=1 to rebuild the Java image from its tag.
+Environment: APP_URL (default http://localhost:8080), REBUILD=1 to rebuild the Java image (core from its tag).
 EOF
 }
 
