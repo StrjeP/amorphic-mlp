@@ -95,7 +95,8 @@ Slice 3 depends on this. A topology record must name exactly what ran, which is 
 |---|---|
 | 0 Groundwork | Done, 16 November 2026. Tag `mlp/102` pushed |
 | 1 Addressing | Done, 17 November 2026. `:addressing` built to spec 01; the inventory, governor and app resolve through it |
-| 2 to 6 | Not started |
+| 2 Envelope and uniform access | Brief written, 23 November 2026 |
+| 3 to 6 | Not started |
 
 ## Slice 0 brief
 
@@ -191,6 +192,63 @@ A new Gradle project, `:addressing`, at `amorphic-systems/addressing`, package `
 - Other version schemes, comparison ranges and other caller preferences (spec section 10).
 - Changing any address on disk, the catalogue format, or the evidence keys.
 
+## Slice 2 brief
+
+A handover for doing slice 2 in Claude Code. Read the slice 2 decisions under "Decided" first.
+
+**Goal:** every pricing-calc call goes through one `invoke(address, envelope)`, whatever the binding. The Java service speaks the envelope natively; the Python service is reached through an adapter and is unchanged. The tour behaves exactly as before: same stages, same numbers, same addresses and stage files.
+
+### Step 0: spec
+
+1. Draft a short pass-1 spec, "02 - Envelope and Uniform Access", in The Knowledge (`realising/specs/`), in the style of spec 01: purpose, terms, the envelope's parts, `invoke`, the three bindings, decisions. Stephen checks it before the build starts.
+
+### What goes in `amorphic-systems/`
+
+2. **`:envelope`** (`amorphic-systems/envelope`, package `dev.amorphic.envelope`). Depends on `:addressing` and Jackson only.
+   - `Envelope`: an `id`, a `purpose` (the `Address` asked for, e.g. the capability), a `schema` (the `Address` of the payload's schema), the `payload` (a JSON tree), and `causation` (the ids of the envelopes or requests that caused this one). Nothing more.
+   - A reply is an envelope too: `causation` holds the request envelope's id, and the payload is either the result or an error (`{"error": "..."}`) under its own schema.
+   - Reads and writes the JSON form, with addresses as canonical text, parsed at the edges. Example:
+
+     ```json
+     {"id": "e-7f3a", "purpose": "pkg:amorphic/greeter@1.*",
+      "schema": "pkg:schema/greeting-request@1.0",
+      "payload": {"name": "Ada"}, "causation": ["r-0042"]}
+     ```
+3. **`:access`** (`amorphic-systems/access`, package `dev.amorphic.access`). Depends on `:addressing` and `:envelope`.
+   - `Invoker`: `Reply invoke(Address address, Envelope request)`. `Reply` holds the reply envelope and its `Timing` (total time; for the adapter, also the time spent in the service, so adapter time = total minus service).
+   - **`LocalBinding`**: calls a `Handler` (envelope in, envelope out) in the same process.
+   - **`RemoteBinding`**: `POST {url}/invoke` with the envelope as JSON; the reply is an envelope.
+   - **`AdapterBinding`**: wraps a plain REST service. Its `AdapterSpec` says the method and path, which payload fields become query parameters, and which response fields become the reply payload. Error responses become error replies. It times the service call.
+   - Framework tests use neutral examples (`greeter`), with a tiny in-test HTTP server for the remote and adapter bindings.
+4. **Schemas in the catalogue.** The catalogue format gains a `schemas:` section: each entry is an address and a file path relative to the catalogue. `Catalogue.schema(Address)` resolves one with the `Resolver`. A schema file is JSON Schema. Each capability version says how it is reached: `access: envelope` or `access: adapter`, with the adapter's spec.
+
+### In the demo
+
+5. **Schemas.** `amorphic-demo-env/schemas/` holds `pricing-calc-convert-request@1.0`, `-reply@1.0` and `-error@1.0` as JSON Schema files, listed in `catalogue.yaml`. Python 1.0 gets `access: adapter` (`GET /convert`, `amount`, `from`, `to` → query, `amount`, `currency` ← body). Java 2.0 and 2.1 get `access: envelope`.
+6. **Java service.** `ConvertController` gains `POST /invoke`, using `:envelope`. `GET /convert` and `/health` stay, because the tour asks both services directly for 732.98.
+7. **Java images.** `build_java_image` in `./demo` builds from the current tree, with `pricing-calc-java/pricing-calc-core` taken from the tag (`git archive` HEAD, then overlay core from `refs/tags/pricing-calc-java/<version>`). So 2.0 keeps HALF_UP and its version, and the service shell speaks the envelope. Say this in a comment beside the function.
+8. **The app.**
+   - `PricingEndpoint`, `RemotePricingEndpoint` and `LocalPricingEndpoint` give way to `Invoker`s. `Bindings` picks one from the table's binding and the catalogue's `access`: `local` → `LocalBinding` around a demo `Handler` that calls `PricingCalcCore`; `remote` → `RemoteBinding` or `AdapterBinding`. The stage files and binding types don't change.
+   - `RoutingPricingCalc` builds one request envelope per call (`causation` = the request id) and sends the same envelope to champion and shadow. An error reply becomes `PricingRejectedException`, as today.
+   - Fail fast at startup if a routed address's schema or adapter spec can't be resolved, in the style of today's `AddressTableException`.
+9. **Evidence.** Each record gains `served_ms` and, on the adapter path, `served_service_ms` (and the same for the shadow). The log line carries them; `/evidence` and the tour stay as they are. This is the data for the future story "the adapter costs, so go native".
+
+### Verify
+
+- `./gradlew build` and `./gradlew :amorphic-demo-app:bootJar -PfoldIn=true`; `checkFrameworkDependencies` passes with `:envelope` and `:access`.
+- `git diff main --stat -- pricing-calc-py` is empty.
+- A Java 2.0 image built the new way still answers 916.23 for 732.98, and `POST /invoke` returns a reply envelope.
+- `./demo tour` runs stages 0 to 4 with the same story; the governor sequence in the guide's Part 2 proposes the same six steps.
+- The evidence log shows `served_service_ms` on Python calls.
+
+### Not in slice 2
+
+- Topology records. `causation` holds the request id only; slice 3 links it to a topology record.
+- Validating payloads against their schemas at run time. Schemas are named and resolved; validating comes later.
+- A schema registry (Apicurio): to revisit, not a must-have.
+- Python speaking the envelope natively, and the "rewrite to native" story.
+- New Java versions or tags, and any change to addresses, stage files, the tour or the guide's output.
+
 ## Moving out
 
 **When:** the first time something other than the pricing demo needs the skeleton. Likely candidates are the level 202 Quarkus capability or the reference implementation itself. A second sign is that slices stop changing the skeleton's interfaces.
@@ -216,13 +274,28 @@ Found while checking the move: none of the four projects depends on a demo proje
 - **Best match.** The highest version that satisfies the range, with qualifiers matching exactly.
 - **Module.** `amorphic-systems/addressing`, package `dev.amorphic.addressing`.
 
+23 November 2026, slice 2:
+
+- **Order.** The envelope comes before topology (discussion item 5).
+- **Envelope.** JSON, with addresses as canonical text.
+- **Schemas.** Addressed assets, kept as files listed in the catalogue for now. A registry such as Apicurio can be a store behind the same addresses later; it isn't a must-have.
+- **On the wire.** The Java service speaks the envelope natively; the Python service is reached through an adapter and is unchanged (discussion item 1). The adapter path records timings.
+- **Java images.** Built from the core at the tag and the service shell from the current tree. The version names the core's behaviour (the rounding); the shell is how it is reached. A later version of the story will revisit this (see "Future stories").
+
 ## For discussion
 
-1. **Envelope on the wire.** Should the Java service speak the envelope natively while Python goes through an adapter? Or should both go through adapters at first, so slice 2 changes only the app?
+1. **Envelope on the wire.** Should the Java service speak the envelope natively while Python goes through an adapter? Or should both go through adapters at first, so slice 2 changes only the app? *Settled for slice 2: see Decided.*
 2. **Composition depth.** Is one step enough to show the composer exists, or does the skeleton need two (for example, quote = convert, then add a fee) to show that composition is real?
 3. **Where topology records live.** In memory and logs only, like evidence today, or in a simple append-only file?
 4. **Address grammar.** Should the address parse with purl-spec, or with an own grammar to spec 01 that reads PURL as one form? (Shared grammar, not shared standard.) *Settled for slice 1: see Decided.*
-5. **Slice order.** Should topology come before the envelope, since evidence is already most of the way to a topology record?
+5. **Slice order.** Should topology come before the envelope, since evidence is already most of the way to a topology record? *Settled: envelope first.*
 6. **Module names.** One project per concept inside `amorphic-systems/`: what is each one called? *Settled for slice 1: see Decided.*
 7. **PURL is one form, not the grammar.** PURL got slice 1 going, but it will get in the way. Its type slot is a short word, not an alias for a spec. It has `@` and nothing else for versions, so it can't declare a scheme. It has nowhere to put an instance's "realises" or "host". And it is flat, so it can't hold a composition. Today only `Address` reads or writes the `pkg:` text; the code uses `Address` objects everywhere else, but the data files (stage files, catalogue, rules) all hold `pkg:` strings. So the cost of changing the form grows with the data. *Due when kind-as-alias or instance addresses land.*
 8. **The address carries its realm.** In `pkg:amorphic/greeter`, `pkg` is a realm (PURL's) and `amorphic` is a type in it. Today `Address` treats `pkg:` as fixed punctuation, so the realm can't be seen. Making it explicit fits "a catalogue defines its aliases": the realm says whose aliases the kind is looked up in, and a hierarchy is a chain of those lookups that ends at the root kind. Examples: `pkg.amorphic/greeter@1.0` (today, made explicit), `pkg.maven/org.foo/bar@2.1` (an ordinary PURL), `amorphic.service/greeter@1.0` (our own realm). In code, `Address` gains a `realm()` or a kind path, and its callers keep asking for `kind()`.
+
+## Future stories
+
+Stories the framework should be able to tell later. Nothing here is in a slice yet.
+
+1. **The adapter costs, so go native.** The adapter path records its timings (slice 2). The system notices what the adapter costs and proposes rewriting the service to speak the envelope natively. The build proves the rewrite gives the same answers (golden vectors) and is faster, and, if feasible, estimates the saving in total cost of ownership.
+2. **Versions name the behaviour spec, not the code.** A version should name the specification of how the capability behaves, not a release of one implementation. Retold that way: Python implements pricing-calc 1.0, and the first Java implementation is also 1.0. The rounding mismatch causes a spec update, 1.1 (round HALF_EVEN), with new tests, and Java 1.1 follows. The API contract stays stable; only the behaviour spec changes. Python can then prove it implements 1.1 too. The open question is how it shows that: claim a range (`1.*`), or point to evidence, the commit that adds the tests (the evidence producer) and the passing run, which is what proves it implements 1.1. Evidence is the leaning. This changes the demo's addresses and story, so it is a new version of the story, not a slice.
