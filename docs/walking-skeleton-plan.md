@@ -95,7 +95,7 @@ Slice 3 depends on this. A topology record must name exactly what ran, which is 
 |---|---|
 | 0 Groundwork | Done, 16 November 2026. Tag `mlp/102` pushed |
 | 1 Addressing | Done, 17 November 2026. `:addressing` built to spec 01; the inventory, governor and app resolve through it |
-| 2 Envelope and uniform access | Brief written, 23 November 2026 |
+| 2 Envelope and uniform access | Brief written and spec 02 settled, 23 November 2026 |
 | 3 to 6 | Not started |
 
 ## Slice 0 brief
@@ -200,27 +200,29 @@ A handover for doing slice 2 in Claude Code. Read the slice 2 decisions under "D
 
 ### Step 0: spec
 
-1. Draft a short pass-1 spec, "02 - Envelope and Uniform Access", in The Knowledge (`realising/specs/`), in the style of spec 01: purpose, terms, the envelope's parts, `invoke`, the three bindings, decisions. Stephen checks it before the build starts.
+1. **Done, 23 November 2026.** Spec "02 - Envelope and Uniform Access" in The Knowledge (`realising/specs/`) is settled. Read its Decisions list first. It follows the notes: a header plus named aspects, not a flat shape.
 
 ### What goes in `amorphic-systems/`
 
 2. **`:envelope`** (`amorphic-systems/envelope`, package `dev.amorphic.envelope`). Depends on `:addressing` and Jackson only.
-   - `Envelope`: an `id`, a `purpose` (the `Address` asked for, e.g. the capability), a `schema` (the `Address` of the payload's schema), the `payload` (a JSON tree), and `causation` (the ids of the envelopes or requests that caused this one). Nothing more.
-   - A reply is an envelope too: `causation` holds the request envelope's id, and the payload is either the result or an error (`{"error": "..."}`) under its own schema.
-   - Reads and writes the JSON form, with addresses as canonical text, parsed at the edges. Example:
+   - `Envelope`: a header, an `id` and a `purpose` (the `Address` of the envelope's own specification), plus `aspects`, keyed by name. Each `Aspect` has a `schema` (an `Address`) and a `body` (a JSON tree). Nothing else at the top level.
+   - Two purposes, as constants: `pkg:envelope/request@1.0` and `pkg:envelope/reply@1.0`. Each must contain a `payload` and a `causation` aspect (`causedBy`: a list of ids); building or reading one without them is an error. Extra aspects are kept and ignored.
+   - A reply's causation holds the request envelope's id. A failure is a reply whose payload is an error (`{"error": "..."}`) under its own schema.
+   - Reads and writes the JSON form, with addresses as canonical text, parsed at the edges. Example, from spec 02:
 
      ```json
-     {"id": "e-7f3a", "purpose": "pkg:amorphic/greeter@1.*",
-      "schema": "pkg:schema/greeting-request@1.0",
-      "payload": {"name": "Ada"}, "causation": ["r-0042"]}
+     {"id": "e-7f3a", "purpose": "pkg:envelope/request@1.0",
+      "aspects": {
+        "payload":   {"schema": "pkg:schema/greeting-request@1.0", "body": {"name": "Ada"}},
+        "causation": {"schema": "pkg:schema/causation@1.0", "body": {"causedBy": ["r-0042"]}}}}
      ```
 3. **`:access`** (`amorphic-systems/access`, package `dev.amorphic.access`). Depends on `:addressing` and `:envelope`.
-   - `Invoker`: `Reply invoke(Address address, Envelope request)`. `Reply` holds the reply envelope and its `Timing` (total time; for the adapter, also the time spent in the service, so adapter time = total minus service).
+   - `Invoker`: `Reply invoke(Address address, Envelope request)`. `Reply` holds the reply envelope and its `Timing` (total time; for the adapter, also the time spent in the service, so adapter time = total minus service). Timings stay with the binding and go to evidence; they are not an aspect (spec 02).
    - **`LocalBinding`**: calls a `Handler` (envelope in, envelope out) in the same process.
    - **`RemoteBinding`**: `POST {url}/invoke` with the envelope as JSON; the reply is an envelope.
    - **`AdapterBinding`**: wraps a plain REST service. Its `AdapterSpec` says the method and path, which payload fields become query parameters, and which response fields become the reply payload. Error responses become error replies. It times the service call.
    - Framework tests use neutral examples (`greeter`), with a tiny in-test HTTP server for the remote and adapter bindings.
-4. **Schemas in the catalogue.** The catalogue format gains a `schemas:` section: each entry is an address and a file path relative to the catalogue. `Catalogue.schema(Address)` resolves one with the `Resolver`. A schema file is JSON Schema. Each capability version says how it is reached: `access: envelope` or `access: adapter`, with the adapter's spec.
+4. **Schemas in the catalogue.** The catalogue format gains a `schemas:` section: each entry is an address and a file path relative to the catalogue. `Catalogue.schema(Address)` resolves one with the `Resolver`. A schema file is JSON Schema. The framework's own schemas (the two purposes and `causation@1.0`) ship as resources in `:envelope`, and the catalogue resolves them too. Each capability version says how it is reached: `access: envelope` or `access: adapter`, with the adapter's spec.
 
 ### In the demo
 
@@ -243,6 +245,7 @@ A handover for doing slice 2 in Claude Code. Read the slice 2 decisions under "D
 
 ### Not in slice 2
 
+- A telemetry aspect: timings travel beside the envelope, not in it.
 - Topology records. `causation` holds the request id only; slice 3 links it to a topology record.
 - Validating payloads against their schemas at run time. Schemas are named and resolved; validating comes later.
 - A schema registry (Apicurio): to revisit, not a must-have.
@@ -280,6 +283,8 @@ Found while checking the move: none of the four projects depends on a demo proje
 - **Envelope.** JSON, with addresses as canonical text.
 - **Schemas.** Addressed assets, kept as files listed in the catalogue for now. A registry such as Apicurio can be a store behind the same addresses later; it isn't a must-have.
 - **On the wire.** The Java service speaks the envelope natively; the Python service is reached through an adapter and is unchanged (discussion item 1). The adapter path records timings.
+- **Envelope shape (spec 02).** A header (id, purpose) plus named aspects, each with its own schema, as in the notes. The purpose is the envelope's own specification; the payload's schema names the operation, and the address passed to `invoke` names the capability.
+- **Timings.** Kept by the binding and handed to evidence. A telemetry aspect is for later.
 - **Java images.** Built from the core at the tag and the service shell from the current tree. The version names the core's behaviour (the rounding); the shell is how it is reached. A later version of the story will revisit this (see "Future stories").
 
 ## For discussion
