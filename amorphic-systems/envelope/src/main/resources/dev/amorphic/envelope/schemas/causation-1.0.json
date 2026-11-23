@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/causation@1.0",
+  "title": "What caused this envelope: the ids of the requests or envelopes it follows from",
+  "type": "object",
+  "required": ["causedBy"],
+  "additionalProperties": false,
+  "properties": { "causedBy": { "type": "array", "items": { "type": "string", "minLength": 1 } } }
+}

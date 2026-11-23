@@ -1,5 +1,7 @@
 package dev.amorphic.demo.pricing;
 
+import dev.amorphic.access.Invoker;
+import dev.amorphic.access.LocalBinding;
 import dev.amorphic.addressing.Address;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -19,13 +21,23 @@ class RoutingPricingCalcTest {
     static final String PY = "pkg:amorphic/pricing-calc@1.0?lang=python";
     static final String JAVA = "pkg:amorphic/pricing-calc@2.0?lang=java";
 
-    /** Fake endpoints keyed by url: "even" rounds HALF_EVEN, "up" rounds HALF_UP, "down" always fails. */
-    static final BiFunction<Address, AddressTable.Binding, PricingEndpoint> FAKES = (address, binding) -> switch (binding.url()) {
-        case "even" -> (a, f, t) -> a.multiply(new BigDecimal("1.25")).setScale(2, RoundingMode.HALF_EVEN);
-        case "up" -> (a, f, t) -> a.multiply(new BigDecimal("1.25")).setScale(2, RoundingMode.HALF_UP);
-        case "down" -> (a, f, t) -> { throw new IllegalStateException("connection refused"); };
+    /** Fake bindings keyed by url: "even" rounds HALF_EVEN, "up" rounds HALF_UP, "down" always fails. */
+    static final BiFunction<Address, AddressTable.Binding, Invoker> FAKES = (address, binding) -> switch (binding.url()) {
+        case "even" -> rounding(RoundingMode.HALF_EVEN);
+        case "up" -> rounding(RoundingMode.HALF_UP);
+        case "down" -> (a, request) -> { throw new IllegalStateException("connection refused"); };
         default -> throw new IllegalArgumentException(binding.url());
     };
+
+    /** An in-process binding that converts at 1.25 with the given rounding, answering envelopes. */
+    static Invoker rounding(RoundingMode mode) {
+        return new LocalBinding(request -> {
+            var body = request.payload().body();
+            BigDecimal amount = new BigDecimal(body.path("amount").asText());
+            return PricingEnvelopes.reply(request, amount.multiply(new BigDecimal("1.25")).setScale(2, mode),
+                    body.path("to").asText());
+        });
+    }
 
     final EvidenceRecorder evidence = new EvidenceRecorder(new ObjectMapper());
 

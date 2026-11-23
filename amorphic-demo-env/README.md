@@ -9,7 +9,7 @@ The outputs below were captured from a real run on 2026-11-06. Request IDs, time
 ## Prerequisites
 
 - Docker with Compose v2, `curl`, `jq`.
-- The git tags `pricing-calc-java/v2.0` and `pricing-calc-java/v2.1`. `./demo` builds each Java image from its tag (`REBUILD=1` forces a rebuild), so the working tree never has to change to replay the bug.
+- The git tags `pricing-calc-java/v2.0` and `pricing-calc-java/v2.1`. `./demo` builds each Java image with the core (the rounding) from its tag and the service shell from the current commit (`REBUILD=1` forces a rebuild), so the working tree never has to change to replay the bug.
 
 ## Rates and edge cases
 

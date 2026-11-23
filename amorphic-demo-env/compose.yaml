@@ -32,7 +32,7 @@ services:
     ports: ["8000:8000"]
 
   java-pricing:
-    # Built by ./demo from the git tag pricing-calc-java/<version>, not from the working tree.
+    # Built by ./demo: the core from the git tag pricing-calc-java/<version>, the service shell from HEAD.
     image: amorphic/pricing-calc-java:${JAVA_VERSION:-v2.1}
     ports: ["8090:8080"]
 

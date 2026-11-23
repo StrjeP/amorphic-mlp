@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:envelope/reply@1.0",
+  "title": "A reply envelope: a header plus a payload (a result or an error) and a causation aspect naming the request, and any others",
+  "type": "object",
+  "required": ["id", "purpose", "aspects"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "purpose": { "const": "pkg:envelope/reply@1.0" },
+    "aspects": {
+      "type": "object",
+      "required": ["payload", "causation"],
+      "additionalProperties": { "$ref": "#/$defs/aspect" }
+    }
+  },
+  "$defs": {
+    "aspect": {
+      "type": "object",
+      "required": ["schema", "body"],
+      "additionalProperties": false,
+      "properties": { "schema": { "type": "string" }, "body": {} }
+    }
+  }
+}

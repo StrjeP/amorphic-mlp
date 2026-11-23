@@ -17,6 +17,8 @@ dependencies {
     // The inventory and governor run in-process, or remotely as their own services, as the
     // address table says. The app carries both: in-process is the default.
     implementation(project(":addressing"))
+    // Every pricing-calc call goes through invoke(address, envelope), whatever the binding (spec 02).
+    implementation(project(":access"))
     implementation(project(":inventory-core"))
     implementation(project(":governor-core"))
     if (foldIn) {

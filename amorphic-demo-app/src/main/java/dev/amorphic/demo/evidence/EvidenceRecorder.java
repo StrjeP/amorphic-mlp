@@ -2,7 +2,9 @@ package dev.amorphic.demo.evidence;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.amorphic.access.Timing;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,7 +35,9 @@ public class EvidenceRecorder {
             BigDecimal servedValue,
             String shadowAddress,
             BigDecimal shadowValue,
-            String shadowError) {
+            String shadowError,
+            Timings servedTimings,
+            Timings shadowTimings) {
 
         public boolean compared() {
             return shadowAddress != null;
@@ -44,6 +48,21 @@ public class EvidenceRecorder {
             return shadowError == null && shadowValue != null
                     && servedValue.toPlainString().equals(shadowValue.toPlainString());
         }
+    }
+
+    /**
+     * How long a call to one target took, in milliseconds. {@code serviceMs} is set only on the adapter path: the
+     * time in the wrapped service, so the adapter's own cost is {@code ms - serviceMs}. The data for "the adapter
+     * costs, so go native" (a future story in the walking-skeleton plan).
+     */
+    public record Timings(double ms, Double serviceMs) {
+        public static Timings of(Timing t) {
+            return t == null ? null : new Timings(millis(t.total()), t.serviceTime().map(EvidenceRecorder::millis).orElse(null));
+        }
+    }
+
+    private static double millis(Duration d) {
+        return Math.round(d.toNanos() / 1_000.0) / 1_000.0;
     }
 
     private record ServedKey(String address, String binding) {}
@@ -146,10 +165,21 @@ public class EvidenceRecorder {
         if (call.shadowError() != null) {
             line.put("shadow_error", call.shadowError());
         }
+        timings(line, "served", call.servedTimings());
+        timings(line, "shadow", call.shadowTimings());
         try {
             LOG.info(json.writeValueAsString(line));
         } catch (JsonProcessingException e) {
             LOG.warn("could not serialise evidence record for {}", call.requestId(), e);
+        }
+    }
+
+    private static void timings(Map<String, Object> line, String who, Timings t) {
+        if (t != null) {
+            line.put(who + "_ms", t.ms());
+            if (t.serviceMs() != null) {
+                line.put(who + "_service_ms", t.serviceMs());
+            }
         }
     }
 

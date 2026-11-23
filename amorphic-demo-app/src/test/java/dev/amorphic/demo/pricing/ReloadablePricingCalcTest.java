@@ -82,7 +82,7 @@ class ReloadablePricingCalcTest {
                       address: pkg:amorphic/pricing-calc@9.9?lang=java
                       binding: { type: local }
                 """);
-        assertThatThrownBy(() -> new ReloadablePricingCalc(unreachable, "x", BindingFactory.DEFAULT, Runnable::run,
+        assertThatThrownBy(() -> new ReloadablePricingCalc(unreachable, "x", BindingFactory.reading(() -> StageAddressTablesTest.CATALOGUE), Runnable::run,
                 () -> 0.5, evidence, Clock.systemUTC())).isInstanceOf(AddressTableException.class);
 
         // Through apply on a live instance: the fake factory rejects an unknown url.

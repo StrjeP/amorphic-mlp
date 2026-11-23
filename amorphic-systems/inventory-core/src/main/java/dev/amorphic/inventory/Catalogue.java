@@ -12,6 +12,7 @@ import dev.amorphic.addressing.Candidate;
 import dev.amorphic.addressing.Preference;
 import dev.amorphic.addressing.Resolution;
 import dev.amorphic.addressing.Resolver;
+import dev.amorphic.envelope.Schemas;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,10 +24,18 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
- * The static catalogue (catalogue.yaml): every version of every capability and piece of tooling,
- * and where it may run.
+ * The static catalogue (catalogue.yaml): every version of every capability and piece of tooling, where it may run
+ * and how it is reached, and the schemas their envelopes use (spec 02).
  */
-public record Catalogue(Map<String, Capability> capabilities) {
+public record Catalogue(Map<String, Capability> capabilities, List<Schema> schemas) {
+
+    public Catalogue {
+        schemas = schemas == null ? List.of() : List.copyOf(schemas);
+    }
+
+    public Catalogue(Map<String, Capability> capabilities) {
+        this(capabilities, List.of());
+    }
 
     /** {@code kind} is "capability" (routed business work) or "tooling" (catalogue, inventory, governor). */
     public record Capability(String kind, String description, List<Version> versions) {
@@ -35,9 +44,17 @@ public record Catalogue(Map<String, Capability> capabilities) {
         }
     }
 
-    /** {@code planned} is set for a version that isn't built yet, saying when it is due. */
-    public record Version(Address address, List<String> locations, Service service, String withdrawn, String planned)
-            implements Candidate {
+    /**
+     * {@code planned} is set for a version that isn't built yet, saying when it is due. {@code access} says how a
+     * remote version is reached: it speaks the envelope, or it is wrapped by an adapter.
+     */
+    public record Version(Address address, List<String> locations, Service service, String withdrawn, String planned,
+            Access access) implements Candidate {
+
+        public Version(Address address, List<String> locations, Service service, String withdrawn, String planned) {
+            this(address, locations, service, withdrawn, planned, null);
+        }
+
         @Override
         public boolean isWithdrawn() {
             return withdrawn != null && !withdrawn.isBlank();
@@ -54,6 +71,68 @@ public record Catalogue(Map<String, Capability> capabilities) {
     }
 
     public record Service(String name, String url) {}
+
+    /** How a version is reached (spec 02, section 7): {@value #ENVELOPE}, or through an {@value #ADAPTER}. */
+    public record Access(String via, Adapter adapter) {
+        public static final String ENVELOPE = "envelope";
+        public static final String ADAPTER = "adapter";
+
+        public Access {
+            if (!ENVELOPE.equals(via) && !ADAPTER.equals(via)) {
+                throw new IllegalArgumentException("access via '" + via + "' is not known (expected " + ENVELOPE
+                        + " or " + ADAPTER + ")");
+            }
+            if (ADAPTER.equals(via) && adapter == null) {
+                throw new IllegalArgumentException("access via adapter needs an 'adapter' saying how to map the envelope");
+            }
+        }
+
+        public boolean viaAdapter() {
+            return ADAPTER.equals(via);
+        }
+    }
+
+    /**
+     * How an adapter maps an envelope onto a plain API: the method and path, which payload fields become query
+     * parameters ({@code query}: payload field to parameter), which response fields become the reply payload
+     * ({@code reply}: response field to payload field), and the reply payload's schema.
+     */
+    public record Adapter(String method, String path, Map<String, String> query, Map<String, String> reply,
+            Address schema) {}
+
+    /**
+     * A schema: an addressed asset (spec 02, section 8). {@code file} is relative to the catalogue when listed, and
+     * absolute once loaded. The framework's own schemas are listed too, and read from its jar.
+     */
+    public record Schema(Address address, String file) implements Candidate {
+        static final String BUILT_IN = "built-in";
+
+        @Override
+        public boolean isWithdrawn() {
+            return false;
+        }
+
+        @Override
+        public boolean isPlanned() {
+            return false;
+        }
+
+        public boolean isBuiltIn() {
+            return BUILT_IN.equals(file);
+        }
+
+        /** The schema's text. */
+        public String text() {
+            if (isBuiltIn()) {
+                return Schemas.read(address);
+            }
+            try {
+                return Files.readString(Path.of(file));
+            } catch (IOException e) {
+                throw new IllegalArgumentException("cannot read schema " + address + " from " + file + ": " + e.getMessage(), e);
+            }
+        }
+    }
 
     /** Reads each version's address when the catalogue loads, so a bad address fails the load. */
     private static final SimpleModule ADDRESSES = new SimpleModule().addDeserializer(Address.class,
@@ -73,12 +152,38 @@ public record Catalogue(Map<String, Capability> capabilities) {
             if (c == null || c.capabilities() == null) {
                 throw new IllegalArgumentException("catalogue " + path + " has no 'capabilities'");
             }
-            return c;
+            return new Catalogue(c.capabilities(), located(c.schemas(), path));
         } catch (java.nio.file.NoSuchFileException e) {
             throw new IllegalArgumentException("cannot read catalogue " + path + ": file not found", e);
         } catch (IOException e) {
             throw new IllegalArgumentException("cannot read catalogue " + path + ": " + e.getMessage(), e);
         }
+    }
+
+    /** Each listed schema's file made absolute, checking it exists, so a missing file fails the load. */
+    private static List<Schema> located(List<Schema> schemas, Path catalogue) {
+        Path dir = catalogue.toAbsolutePath().getParent();
+        return schemas.stream().map(s -> {
+            if (s.address() == null || s.file() == null) {
+                throw new IllegalArgumentException("catalogue " + catalogue + ": every schema needs an address and a file");
+            }
+            Path file = dir.resolve(s.file()).normalize();
+            if (!Files.isRegularFile(file)) {
+                throw new IllegalArgumentException("catalogue " + catalogue + ": schema " + s.address()
+                        + " points to " + s.file() + ", which doesn't exist");
+            }
+            return new Schema(s.address(), file.toString());
+        }).toList();
+    }
+
+    /**
+     * Chooses the schema a request asks for, among those listed and the framework's own, by the same best match as
+     * versions (spec 01).
+     */
+    public Resolution<Schema> schema(Address request) {
+        List<Schema> all = Stream.concat(schemas.stream(),
+                Schemas.BUILT_IN.keySet().stream().map(a -> new Schema(a, Schema.BUILT_IN))).toList();
+        return Resolver.resolve(request, all, Preference.HIGHEST_VERSION);
     }
 
     public String kind(String capability) {
