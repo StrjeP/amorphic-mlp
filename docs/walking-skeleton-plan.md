@@ -271,7 +271,7 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
    - When the composer lands (slice 4), a topology covers a whole plan, and the name becomes the outcome (for example `quote`).
    - **Later:** the hash as a version under a second version scheme (for example `pkg:topology/pricing-calc@#5f2c1a9e`). That is the second scheme spec 01 defers until one is needed (section 5's symbol idea); it changes spec 01, `Version` and the parser, so not now.
 3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the topology's address, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
-4. **Instances in text.** *Proposed:* no new address syntax. An instance is written as a small JSON object, `{"identity", "realises", "host"}`, with `realises` as a canonical address and `host` as the host's identity. PURL has nowhere for "realises" or "host" (discussion item 7), and this avoids inventing a form before one is needed.
+4. **Instances in text.** **Settled:** no new address syntax. An instance is written as a small JSON object, `{"identity", "realises", "host"}`, with `realises` as a canonical address and `host` as the host's identity. PURL has nowhere for "realises" or "host" (discussion item 7), and this avoids inventing a form before one is needed.
 5. **Where identities come from (spec 01, section 8).** Whoever deploys a thing assigns its identity.
    - *Proposed:* `./demo` gives each service it starts an identity made from its name and image id (for example `java-pricing/5f2c1a9e`), so a restart keeps it and a new image makes a new one. It writes them, keyed by binding URL, to `.run/instances.yaml`, and gives the app its own as `AMORPHIC_INSTANCE`.
    - A folded-in core is a part of the app: `Instance.part(app, "pricing-calc")`.
@@ -345,6 +345,7 @@ Found while checking the move: none of the four projects depends on a demo proje
 
 - **Topology records** live in a simple append-only file (JSON lines), so a record that is meant to be fixed outlives the process (discussion item 3).
 - **Topology identity and address.** The id is a hash of the topology's content; the topology is addressed like anything else, with the hash as a qualifier (`pkg:topology/pricing-calc?hash=…`). The hash as a second version scheme is noted for later.
+- **Instances in text.** A small JSON object (`identity`, `realises` as a canonical address, `host` as the host's identity), not a new address syntax, since PURL has nowhere for "realises" or "host" (discussion item 7).
 
 ## For discussion
 
