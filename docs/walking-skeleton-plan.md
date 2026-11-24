@@ -322,7 +322,7 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 
 ## Slice 4 brief
 
-A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "Decided" first. **Draft, 24 November 2026:** the points marked *To settle* are open.
+A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "Decided" first. **Decisions settled, 24 November 2026;** spec 04 comes next, before building.
 
 **Goal:** the app stops calling pricing directly. Each endpoint states the outcome it wants, and a composer works out the plan, resolves each step's address and invokes it. `/quote` becomes a one-step plan. A new account report is a plan of several steps: load an account's positions, convert each to USD, and add them up. The tour's pricing story runs unchanged underneath, and at stage 1 the shadow shows Java 2.0 getting an account's total wrong, not just one price.
 
@@ -352,7 +352,7 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 5. **Outcomes are addressed.** **Settled:** their own kind, `pkg:outcome/quote@1.0` and `pkg:outcome/account-value@1.0`. An outcome is what a caller asks for, not a capability that runs, so the kinds stay apart. The topology is named after the outcome (`pkg:topology/account-value?hash=…`, spec 03, section 3). Spec 01's list of kinds (section 4.1) gains `outcome`.
 6. **Recipes live in the catalogue.** Each outcome lists its steps; each step names a capability address and where its input comes from. One fan-out form, "for each item of an earlier step's output", and one reduce step, the sum. This is a fixed recipe, not a planner: there is no choosing between recipes and no cost model. **Settled:** the sum is its own local capability, `pkg:amorphic/sum@1.0`, so every step is an addressed `invoke`, appears in the topology, and could be swapped like any other.
 7. **Each step goes through what's there today.** A convert step is resolved and routed exactly as now: the address table, champion, shadow, canary, the handshake and evidence. The composer doesn't know about stages.
-8. **Routing is decided once per plan.** *To settle:* at the canary stage, a report's conversions either all go to the same champion (decided once when the plan starts, so a report is answered consistently and runs on one topology) or are split call by call as quotes are today. Once per plan is the leaning.
+8. **Routing is decided once per plan.** **Settled:** at the canary stage, the champion is chosen once when a plan starts, and all of its conversions go there. A report is answered by one consistent set of resources and runs on one topology, like a prepared query (spec 03). A quote is a one-step plan, so it behaves as today.
 9. **Causation.** The outcome request has its own envelope id. Each step's envelope names it as `causedBy`, so from a report you can reach every call it made, and from any call the report that caused it.
 10. **One topology for the plan.** A report's topology is named after its outcome and lists each step's roles (spec 03 already allows this). Call records stay one per call, as now. A quote's topology is the one-step case.
 
@@ -432,6 +432,7 @@ Found while checking the move: none of the four projects depends on a demo proje
 - **Positions are local only.** `pkg:amorphic/positions@1.0` is a local handler in the app reading `accounts.yaml`: no service, stage files or handshake.
 - **Outcomes have their own kind.** `pkg:outcome/<name>@<version>`, apart from the capabilities that serve them; a plan's topology is named after its outcome.
 - **The sum is a capability.** `pkg:amorphic/sum@1.0`, bound local, so every step of a plan is an addressed `invoke`; the composer computes nothing itself.
+- **Routing once per plan.** The canary's choice of champion is made once when a plan starts, so every step of one report goes the same way and the report has one topology.
 
 ## For discussion
 
