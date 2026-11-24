@@ -433,6 +433,7 @@ Found while checking the move: none of the four projects depends on a demo proje
 - **Outcomes have their own kind.** `pkg:outcome/<name>@<version>`, apart from the capabilities that serve them; a plan's topology is named after its outcome.
 - **The sum is a capability.** `pkg:amorphic/sum@1.0`, bound local, so every step of a plan is an addressed `invoke`; the composer computes nothing itself.
 - **Routing once per plan.** The canary's choice of champion is made once when a plan starts, so every step of one report goes the same way and the report has one topology.
+- **A shadow result for the outcome.** Where a step has a shadow, the composer also finishes the plan on the shadow's answers and records the result (never returned), so stage 1 can say what the account would have been valued at.
 
 ## For discussion
 
