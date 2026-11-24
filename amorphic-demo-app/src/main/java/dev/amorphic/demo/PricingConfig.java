@@ -8,7 +8,10 @@ import dev.amorphic.demo.pricing.AddressTable;
 import dev.amorphic.demo.pricing.AddressTableException;
 import dev.amorphic.demo.pricing.BindingFactory;
 import dev.amorphic.demo.pricing.MetaReader;
-import dev.amorphic.demo.pricing.ReloadablePricingCalc;
+import dev.amorphic.demo.pricing.ReloadableRouting;
+import dev.amorphic.composer.Composer;
+import dev.amorphic.demo.compose.LocalCapabilities;
+import dev.amorphic.demo.compose.Outcomes;
 import dev.amorphic.envelope.InstanceRef;
 import dev.amorphic.inventory.Catalogue;
 import dev.amorphic.inventory.Instances;
@@ -66,19 +69,31 @@ class PricingConfig {
     }
 
     /**
-     * The startup table comes from amorphic.addresses. Later tables arrive through
-     * POST /admin/address-table and are applied without a restart. Each is checked against what answers
-     * (the handshake) before it is used.
+     * The routing the composer plans with. The startup table comes from amorphic.addresses. Later tables arrive
+     * through POST /admin/address-table and are applied without a restart. Each is checked against what answers
+     * (the handshake) before it is used. Positions and sum always run in the app.
      */
     @Bean
-    ReloadablePricingCalc pricingCalc(@Value("${amorphic.addresses}") String addresses,
+    ReloadableRouting routing(@Value("${amorphic.addresses}") String addresses,
             @Value("${amorphic.catalogue}") String catalogue, @Value("${amorphic.instances}") String instances,
-            EvidenceRecorder evidence, Instance self, TopologyLog topologies, MetaReader meta) {
+            @Value("${amorphic.accounts}") String accounts, EvidenceRecorder evidence, Instance self, MetaReader meta) {
         Path path = Path.of(addresses);
-        return new ReloadablePricingCalc(AddressTable.load(path), path.toString(),
+        LocalCapabilities local = new LocalCapabilities(self, Path.of(accounts));
+        return new ReloadableRouting(AddressTable.load(path), path.toString(),
                 BindingFactory.reading(() -> Catalogue.load(Path.of(catalogue)), () -> Instances.load(Path.of(instances)),
                         self, meta),
-                Executors.newVirtualThreadPerTaskExecutor(), () -> ThreadLocalRandom.current().nextDouble(),
-                evidence, Clock.systemUTC(), topologies, InstanceRef.of(self));
+                () -> ThreadLocalRandom.current().nextDouble(), evidence, Clock.systemUTC(), local::route);
+    }
+
+    /**
+     * What the endpoints ask: an outcome, with its recipe read from the catalogue on every plan, so a hand edit applies
+     * to the next one. Comparisons run in the background.
+     */
+    @Bean
+    Outcomes outcomes(@Value("${amorphic.catalogue}") String catalogue, ReloadableRouting routing,
+            EvidenceRecorder evidence, Instance self, TopologyLog topologies) {
+        Composer composer = new Composer(() -> Catalogue.load(Path.of(catalogue)).outcomes(), routing,
+                Executors.newVirtualThreadPerTaskExecutor(), topologies, InstanceRef.of(self), Clock.systemUTC());
+        return new Outcomes(composer, evidence, Clock.systemUTC());
     }
 }

@@ -12,6 +12,16 @@
 #   access     for a capability: how a remote version is reached. via: envelope means it speaks the
 #              envelope (POST /invoke); via: adapter means the app wraps its plain API, as the adapter says
 #
+# outcomes lists what a caller can ask for (spec 04), each with its recipe: the steps that reach it.
+#   steps      in order; the last step's output is the result
+#   capability what the step asks for, at any rung; the routing chooses what serves it, once per plan
+#   schema     the schema of the payload the step is sent
+#   with       how that payload is built: field -> expression. An expression is a dotted path starting
+#              with input (the outcome's input), item (the current item, in a fan-out) or an earlier
+#              step's name (its output)
+#   each       run the step once for each item of this list; its output is the list of results
+#   pass-through  items where `when` equals `equals` are already done: they go on unchanged, no call
+#
 # schemas, at the end, lists the schemas the envelopes' payloads follow, each by address and file.
 # The framework's own schemas (envelope, causation, error, instance) are built in and need no entry.
 #
@@ -48,6 +58,20 @@ capabilities:
         service: { name: java-pricing, url: http://java-pricing:8080 }
         access: { via: envelope }
 
+  positions:
+    kind: capability
+    description: An account's positions, read from accounts.yaml. Always in-process in the app.
+    versions:
+      - address: pkg:amorphic/positions@1.0?lang=java
+        locations: [local]
+
+  sum:
+    kind: capability
+    description: Adds up amounts that are all in one currency. Always in-process in the app.
+    versions:
+      - address: pkg:amorphic/sum@1.0?lang=java
+        locations: [local]
+
   catalogue:
     kind: tooling
     description: This file. Every version, where it may run, and whether it is withdrawn. Edited by hand.
@@ -73,8 +97,50 @@ capabilities:
         locations: [local, remote]
         service: { name: governor, url: http://governor:8080 }
 
+outcomes:
+  - address: pkg:outcome/quote@1.0
+    description: A price for an amount, in another currency.
+    input: pkg:schema/quote-request@1.0
+    steps:
+      - name: convert
+        capability: pkg:amorphic/pricing-calc
+        schema: pkg:schema/pricing-calc-convert-request@1.0
+        with: { amount: input.amount, from: input.from, to: input.to }
+
+  - address: pkg:outcome/account-value@1.0
+    description: What an account is worth in one currency.
+    input: pkg:schema/account-value-request@1.0
+    steps:
+      - name: positions
+        capability: pkg:amorphic/positions
+        schema: pkg:schema/positions-request@1.0
+        with: { account: input.account }
+      - name: convert
+        capability: pkg:amorphic/pricing-calc
+        schema: pkg:schema/pricing-calc-convert-request@1.0
+        each: positions.positions
+        # A position already in the report's currency needs no conversion.
+        pass-through: { when: item.currency, equals: input.currency }
+        with: { amount: item.amount, from: item.currency, to: input.currency }
+      - name: total
+        capability: pkg:amorphic/sum
+        schema: pkg:schema/sum-request@1.0
+        with: { amounts: convert, currency: input.currency }
+
 schemas:
   - address: pkg:schema/pricing-calc-convert-request@1.0
     file: schemas/pricing-calc-convert-request-1.0.json
   - address: pkg:schema/pricing-calc-convert-reply@1.0
     file: schemas/pricing-calc-convert-reply-1.0.json
+  - address: pkg:schema/quote-request@1.0
+    file: schemas/quote-request-1.0.json
+  - address: pkg:schema/account-value-request@1.0
+    file: schemas/account-value-request-1.0.json
+  - address: pkg:schema/positions-request@1.0
+    file: schemas/positions-request-1.0.json
+  - address: pkg:schema/positions-reply@1.0
+    file: schemas/positions-reply-1.0.json
+  - address: pkg:schema/sum-request@1.0
+    file: schemas/sum-request-1.0.json
+  - address: pkg:schema/sum-reply@1.0
+    file: schemas/sum-reply-1.0.json

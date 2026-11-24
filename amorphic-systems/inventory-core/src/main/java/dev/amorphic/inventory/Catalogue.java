@@ -13,6 +13,7 @@ import dev.amorphic.addressing.Candidate;
 import dev.amorphic.addressing.Preference;
 import dev.amorphic.addressing.Resolution;
 import dev.amorphic.addressing.Resolver;
+import dev.amorphic.composer.Recipe;
 import dev.amorphic.envelope.Schemas;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,13 +27,19 @@ import java.util.stream.Stream;
 
 /**
  * The static catalogue (catalogue.yaml): every version of every capability and piece of tooling, where it may run
- * and how it is reached, and the schemas their envelopes use (spec 02).
+ * and how it is reached, the outcomes callers can ask for with the recipe for each (spec 04), and the schemas their
+ * envelopes use (spec 02).
  */
-public record Catalogue(Map<String, Capability> capabilities, List<Schema> schemas,
+public record Catalogue(Map<String, Capability> capabilities, List<Recipe> outcomes, List<Schema> schemas,
         @JsonProperty("accept-undeclared") Boolean acceptUndeclared) {
 
     public Catalogue {
+        outcomes = outcomes == null ? List.of() : List.copyOf(outcomes);
         schemas = schemas == null ? List.of() : List.copyOf(schemas);
+    }
+
+    public Catalogue(Map<String, Capability> capabilities, List<Schema> schemas, Boolean acceptUndeclared) {
+        this(capabilities, List.of(), schemas, acceptUndeclared);
     }
 
     public Catalogue(Map<String, Capability> capabilities, List<Schema> schemas) {
@@ -166,7 +173,7 @@ public record Catalogue(Map<String, Capability> capabilities, List<Schema> schem
             if (c == null || c.capabilities() == null) {
                 throw new IllegalArgumentException("catalogue " + path + " has no 'capabilities'");
             }
-            return new Catalogue(c.capabilities(), located(c.schemas(), path), c.acceptUndeclared());
+            return new Catalogue(c.capabilities(), c.outcomes(), located(c.schemas(), path), c.acceptUndeclared());
         } catch (java.nio.file.NoSuchFileException e) {
             throw new IllegalArgumentException("cannot read catalogue " + path + ": file not found", e);
         } catch (IOException e) {

@@ -97,7 +97,8 @@ Slice 3 depends on this. A topology record must name exactly what ran, which is 
 | 1 Addressing | Done, 17 November 2026. `:addressing` built to spec 01; the inventory, governor and app resolve through it |
 | 2 Envelope and uniform access | Done, 23 November 2026. `:envelope` and `:access` built to spec 02; every pricing-calc call goes through `invoke`; Java speaks the envelope, Python is reached through an adapter that records its timings |
 | 3 Topology | Done, 24 November 2026. `:topology` built to spec 03; every call records the topology it ran on, addressed by a hash of its content; instances are declared in `instances.yaml`; services report themselves on `/meta`, and a table that routes to the wrong instance is refused |
-| 4 to 6 | Not started |
+| 4 Composer | Done, 24 November 2026. `:composer` built to spec 04; `/quote` and the new account report (`/accounts/{account}/value`) ask for outcomes, and the composer runs each recipe from the catalogue with one route per step and one topology per plan; at stage 1 the shadow shows Java 2.0 valuing the sample account at 2216.23 instead of 2216.22 |
+| 5 to 6 | Not started |
 
 ## Slice 0 brief
 
@@ -359,12 +360,17 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 ### What goes in `amorphic-systems/`
 
 11. **`:composer`** (`amorphic-systems/composer`, package `dev.amorphic.composer`). Depends on `:addressing`, `:envelope`, `:access` and `:topology`. `Recipe` (read from the catalogue), `Plan` (a recipe applied to an input: the steps with their resolved addresses) and `Composer.run(outcome, input) -> result`, which invokes each step through an `Invoker` it is given. Framework tests use neutral examples (`greeter`, `shout`), never pricing.
-12. **`:inventory-core`'s `Catalogue`** gains `outcomes` with their recipes.
+   - *As built:* there is no `Plan` type. The plan is the `Router.Route` the composer chooses for each step from one `Routing` snapshot (`Router.begin()`); a route is the leg that serves plus an optional compared leg. `Composer.run(outcome, envelope)` returns a `Run`: the reply, each step with its calls, and `completed`, which finishes once the comparisons are in, with the shadow result and the plan's recorded topology. Recipe expressions are dotted paths starting with `input`, `item` or an earlier step's name, checked when the catalogue loads. The last step can't fan out.
+12. **`:inventory-core`'s `Catalogue`** gains `outcomes` with their recipes. *As built:* so `:inventory-core` depends on `:composer`, for `Recipe`.
 
 ### In the demo
 
 13. **The app.** `QuoteController` asks the composer for `pkg:outcome/quote`; a new `AccountController` asks for `pkg:outcome/account-value`. Neither names `PricingCalc`. The pricing routing becomes the invoker the composer is given for pricing-calc steps; positions and sum are bound local.
 14. **Evidence** stays per convert call, so the tour's numbers don't change. A report also states the shadow's total where there is a shadow, so stage 1 can show "this account would have been valued at 2216.23".
+   - *As built:* the shadow total isn't in the report's reply (it arrives after the reply is sent). It is in `/evidence` under `outcomes`, which counts each outcome's served result against its shadow result; the tour reads it from there.
+   - *As built, a change to slice 3:* comparisons are now counted per pair of instances compared, not per topology. A report's topology differs from a quote's, so keying by topology would give each report its own bucket with a handful of matches, and the gate (every comparison needs 1000 in a row) would hold back any stage in which someone asked for a report. The evidence is about the two instances, whichever plan they served. Each comparison still names the latest topology it was seen on, and a swapped instance is still counted apart.
+   - *As built:* a quote's topology is now `pkg:topology/quote?hash=…`, not `pkg:topology/pricing-calc`, and each role names its step. When a shadowed step comes before other steps, the composer runs those again on the shadow's answers; those calls are recorded on the same topology.
+   - *As built:* the inventory lists positions and sum as capabilities running in-process in the app (always).
 15. **`./demo`** gains `./demo report [account]`. The tour asks for the sample account's value at stage 1 (Python and Java 2.0 disagree by a cent) and at stage 4 (inside the app), in plain words. `guide.md` and the README gain the report, with captured output.
 
 ### Verify

@@ -21,6 +21,8 @@ dependencies {
     implementation(project(":access"))
     // Every call records the topology it ran on: who answered, in which role (spec 03).
     implementation(project(":topology"))
+    // Each endpoint asks for an outcome; the composer works out the plan and runs it (spec 04).
+    implementation(project(":composer"))
     implementation(project(":inventory-core"))
     implementation(project(":governor-core"))
     if (foldIn) {

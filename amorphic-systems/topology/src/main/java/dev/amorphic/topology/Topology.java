@@ -19,17 +19,18 @@ import java.util.List;
  * it resolved to, how it was reached and the instance that answered. Nothing that changes from call to call is in
  * it, not even the routing generation, so calls that ran on the same shape share one topology.
  *
- * @param name   what it served: in pass 1 the capability, for example {@code pricing-calc}
+ * @param name   what it served: the outcome, for example {@code quote} (spec 04, section 7)
  * @param caller the instance that made the call
  */
 public record Topology(String name, InstanceRef caller, List<Role> roles) {
 
     /**
-     * One part an instance played. {@code handle} is the binding URL, or null for a local binding. {@code instance}
-     * is who answered, or null if nothing could say; {@code undeclared} is true when it answered without being
-     * declared first (only where the catalogue accepts that).
+     * One part an instance played in one step of a plan. {@code step} is the recipe step's name (spec 04).
+     * {@code handle} is the binding URL, or null for a local binding. {@code instance} is who answered, or null if
+     * nothing could say; {@code undeclared} is true when it answered without being declared first (only where the
+     * catalogue accepts that).
      */
-    public record Role(String role, Address requested, Address resolved, String binding, String handle,
+    public record Role(String step, String role, Address requested, Address resolved, String binding, String handle,
             InstanceRef instance, boolean undeclared) {}
 
     public static final String KIND = "topology";
@@ -71,6 +72,7 @@ public record Topology(String name, InstanceRef caller, List<Role> roles) {
         ArrayNode rs = o.putArray("roles");
         for (Role r : roles) {
             ObjectNode n = rs.addObject();
+            n.put("step", r.step());
             n.put("role", r.role());
             n.put("requested", r.requested().toString());
             n.put("resolved", r.resolved().toString());
@@ -90,7 +92,7 @@ public record Topology(String name, InstanceRef caller, List<Role> roles) {
         List<Role> roles = new ArrayList<>();
         for (JsonNode r : n.path("roles")) {
             JsonNode instance = r.get("instance");
-            roles.add(new Role(r.path("role").asText(), Address.parse(r.path("requested").asText()),
+            roles.add(new Role(text(r, "step"), r.path("role").asText(), Address.parse(r.path("requested").asText()),
                     Address.parse(r.path("resolved").asText()), text(r, "binding"), text(r, "handle"),
                     instance == null || instance.isNull() ? null : InstanceRef.read(instance),
                     r.path("undeclared").asBoolean(false)));

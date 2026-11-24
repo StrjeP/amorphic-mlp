@@ -30,6 +30,7 @@ Some amounts convert to exactly half a penny, for example 10.02 GBP → 12.525 U
 | `./demo apply <file>` | Push any address table to the running app. Routing only: it doesn't start or stop containers. A table the app can't honour is rejected and the current routing stays live. |
 | `./demo diff <from> <to>` | Show what the governor changes between two stages. |
 | `./demo quote <amount> [from] [to]` | One `/quote` call. |
+| `./demo report [account] [currency]` | Value an account (default `A-1001` in USD): load its positions, convert each, add them up (see [Outcomes and the account report](#outcomes-and-the-account-report)). |
 | `./demo traffic [--requests N] [--edge-share PCT]` | Steady load (default 1200 requests). |
 | `./demo evidence` | The `/evidence` summary. |
 | `./demo inventory [--json]` | Observe the system now: routing, `/health` of each address, readiness and the catalogue (see [Inventory](#inventory)). |
@@ -529,16 +530,92 @@ Routing and health:
 
 `./demo quote 732.98` served 916.22 with the `local` binding, and `./demo tooling local` stopped the last tooling container.
 
+## Outcomes and the account report
+
+The app never names what prices its answers. Each endpoint asks for an **outcome** (spec 04): `/quote` asks for `pkg:outcome/quote@1.0`, and `/accounts/{account}/value` asks for `pkg:outcome/account-value@1.0`. The composer finds the outcome's recipe in `catalogue.yaml`, chooses a route for every step once, and runs the steps in order:
+
+- **quote:** one step, `convert` (pricing-calc).
+- **account-value:** three steps. `positions` loads what the account holds (from `accounts.yaml`), `convert` runs once for each position, and `total` adds them up (`sum`). A position already in the report's currency passes through with no call.
+
+pricing-calc is routed by the stage's address table as before, so shadow, canary and fold-in all apply to every conversion. At the canary stage a report's conversions all go the same way: the choice is made once per plan. Positions and sum always run inside the app.
+
+Every call in a plan is caused by the outcome request, and the whole plan runs on one topology, named after the outcome. When a step is shadowed, the composer also finishes the plan on the shadow's answers. That **shadow result** is never sent back; it goes to `/evidence` under `outcomes`.
+
+- `./demo report [account] [currency]`: value an account (default `A-1001` in USD).
+
+### Captured run (2026-11-24)
+
+Stage 1. The customer gets Python's conversions; the cash needs none:
+
+```console
+$ ./demo report
+{
+  "account": "A-1001",
+  "currency": "USD",
+  "total": "2216.22",
+  "positions": [
+    { "name": "Pounds", "amount": "732.98", "currency": "GBP", "value": "916.22",
+      "convertedBy": "pkg:amorphic/pricing-calc@1.0?lang=python" },
+    { "name": "Euros", "amount": "1000.00", "currency": "EUR", "value": "1050.00",
+      "convertedBy": "pkg:amorphic/pricing-calc@1.0?lang=python" },
+    { "name": "Cash", "amount": "250.00", "currency": "USD", "value": "250.00",
+      "convertedBy": null }
+  ],
+  "outcome": "pkg:outcome/account-value@1.0",
+  "requestId": "8110dbaf-a2f9-42ce-9bab-027f93a92884"
+}
+```
+
+On Java 2.0's conversions the account would have been worth a cent more:
+
+```console
+$ curl -s localhost:8080/evidence | jq -c '.outcomes[] | select(.outcome == "pkg:outcome/account-value@1.0") | {outcome, mismatches, served: .lastMismatch.served.amount, shadow: .lastMismatch.shadow.amount}'
+{"outcome":"pkg:outcome/account-value@1.0","mismatches":1,"served":"2216.22","shadow":"2216.23"}
+```
+
+The report's topology names every step, and who answered in each role:
+
+```console
+$ T=$(curl -s localhost:8080/evidence | jq -r '.outcomes[] | select(.outcome == "pkg:outcome/account-value@1.0") | .lastMismatch.topology')
+$ curl -s --get localhost:8080/topology --data-urlencode "address=$T" | jq -c '.roles[] | {step, role, instance: .instance.identity}'
+{"step":"positions","role":"champion","instance":"demo-app-remote/positions"}
+{"step":"convert","role":"champion","instance":"py-pricing-v1.0"}
+{"step":"convert","role":"shadow","instance":"java-pricing-v2.0"}
+{"step":"total","role":"champion","instance":"demo-app-remote/sum"}
+```
+
+Its calls, with envelope ids cut short. The tour's stage 1 report and this one ran on the same topology. Each wrote six records: the outcome request (caused by the caller's request id), then positions, two conversions, the total, and the total again on the shadow's answers, each caused by the outcome request:
+
+```console
+$ curl -s --get localhost:8080/topology/calls --data-urlencode "address=$T" | jq -c '.[] | {envelope: .envelope[0:14], causedBy: [.causedBy[] | .[0:14]]}'
+{"envelope":"e-899bd577-3f6","causedBy":["tour-stage-1"]}
+{"envelope":"e-47683cc7-238","causedBy":["e-899bd577-3f6"]}
+{"envelope":"e-43b1aad1-025","causedBy":["e-899bd577-3f6"]}
+{"envelope":"e-5e0e113c-5f8","causedBy":["e-899bd577-3f6"]}
+{"envelope":"e-70f6e816-436","causedBy":["e-899bd577-3f6"]}
+{"envelope":"e-735019d1-a29","causedBy":["e-899bd577-3f6"]}
+{"envelope":"e-9e9de2a4-d8b","causedBy":["8110dbaf-a2f9-"]}
+{"envelope":"e-112e1a76-13a","causedBy":["e-9e9de2a4-d8b"]}
+{"envelope":"e-feee37d4-1f6","causedBy":["e-9e9de2a4-d8b"]}
+{"envelope":"e-4a7ec027-0c2","causedBy":["e-9e9de2a4-d8b"]}
+{"envelope":"e-3eb9453d-ba1","causedBy":["e-9e9de2a4-d8b"]}
+{"envelope":"e-ff4d00eb-f50","causedBy":["e-9e9de2a4-d8b"]}
+```
+
+At stage 4 the same report says 2216.22, with every conversion made inside the app.
+
 ## Topology and the handshake
 
-Every call records **exactly what it ran on**: its topology (spec 03). A topology lists each role with the instance that actually answered, plus the caller (the app). Its identity is a hash of that content, and it has an address like everything else: `pkg:topology/pricing-calc?hash=…`. Calls that ran on the same shape share one topology, whatever the table generation. The records are appended to `.run/records/topology.jsonl`, so they survive an app restart; `./demo down` removes them.
+Every call records **exactly what it ran on**: its topology (spec 03). A topology lists each step's roles with the instance that actually answered, plus the caller (the app). Its identity is a hash of that content, and it has an address like everything else, named after the outcome it served: `pkg:topology/quote?hash=…` or `pkg:topology/account-value?hash=…` (see [Outcomes and the account report](#outcomes-and-the-account-report)). Calls that ran on the same shape share one topology, whatever the table generation. The records are appended to `.run/records/topology.jsonl`, so they survive an app restart; `./demo down` removes them.
 
 **Instances are declared first**, in `instances.yaml`: each one's identity (like a car's VIN), what it realises, and its handle. `./demo` passes each service its identity, and each service reports itself on `GET /meta`, taking what it realises from its own code. When a table is applied, the app asks every remote role who it is, and refuses the table if the answer isn't what the table routes to. Java's replies also say who answered, on every call, so a container swapped between calls shows up as a new topology.
 
-- `GET /topology?address=<topology address>`: one topology. With `pkg:topology/pricing-calc`, every topology recorded for pricing-calc.
+- `GET /topology?address=<topology address>`: one topology. With `pkg:topology/quote`, every topology recorded for quotes.
 - `GET /topology/calls?address=<topology address>`: the calls that ran on it (envelope id, what caused it, generation, time).
 
 ### Captured run (2026-11-24)
+
+This run was captured in slice 3, before the composer, when topologies were named after the capability (`pkg:topology/pricing-calc`) and roles had no step.
 
 Stage 1. The mismatch's topology names who was compared, by identity, not by URL:
 
@@ -586,15 +663,32 @@ After Java 2.1 was back and the app restarted, both topologies still resolved. T
         "servedValue": "916.22",
         "shadowValue": "916.23",
         "shadowError": null,
-        "topology": "pkg:topology/pricing-calc?hash=db96586a…"
+        "topology": "pkg:topology/quote?hash=db96586a…"
       },
-      "topology": "pkg:topology/pricing-calc?hash=db96586a…"
+      "instances": { "served": "py-pricing-v1.0", "shadow": "java-pricing-v2.0" },
+      "topology": "pkg:topology/quote?hash=db96586a…"
+    }
+  ],
+  "outcomes": [
+    {
+      "outcome": "pkg:outcome/account-value@1.0",
+      "total": 1, "matches": 0, "mismatches": 1,
+      "lastMismatch": {
+        "requestId": "8110dbaf-a2f9-42ce-9bab-027f93a92884",
+        "timestamp": "2026-11-24T17:21:27.073373295Z",
+        "served": { "amount": "2216.22", "currency": "USD" },
+        "shadow": { "amount": "2216.23", "currency": "USD" },
+        "shadowError": null,
+        "topology": "pkg:topology/account-value?hash=843180f3…"
+      }
     }
   ]
 }
 ```
 
-Each comparison is counted per topology (see [Topology and the handshake](#topology-and-the-handshake)): the exact instances compared, not just their addresses. `topology` is its address, which `/topology?address=` resolves.
+Each comparison is counted per pair of instances (`instances`): the exact instances compared, not just their addresses, so a service swapped behind the same URL is counted apart. A quote and an account report compared on the same two instances count together, because the evidence is about the instances, whichever plan they served. `topology` is the latest topology the pair was compared on, which `/topology?address=` resolves.
+
+`outcomes` counts each outcome whose plan had a comparison: the result the caller got (`served`) against what it would have been on the compared answers (`shadow`). The gate reads only `comparisons`.
 
 A comparison matches only when the two values are identical strings, so `12.5` and `12.50` count as a mismatch. A shadow that errors counts as a mismatch.
 
@@ -605,10 +699,12 @@ A comparison matches only when the two values are identical strings, so `12.5` a
 | `demo` | The stage switcher and demo commands. |
 | `compose.yaml` | One compose file for all stages, including the inventory and governor services. `./demo` chooses which services run. |
 | `addresses/stage-*.yaml` | One address table per stage, with no comments, so `./demo diff` shows only the real change. |
-| `catalogue.yaml` | Every capability and tooling version, where it may run, and whether it is withdrawn or planned. Edited by hand; read on every inventory observation. |
+| `catalogue.yaml` | Every capability and tooling version, where it may run, and whether it is withdrawn or planned; the outcomes callers can ask for, each with its recipe. Edited by hand; read on every inventory observation and every plan. |
+| `accounts.yaml` | The accounts the positions capability reads: the sample account `A-1001`. |
 | `instances.yaml` | Every instance the system declares before it runs: its identity, what it realises, and its handle. Edited by hand; read whenever a table is applied. |
 | `governor-rules.yaml` | The governor's rule table, tried in order. Edited by hand; read on every proposal. |
 | `golden/vectors.json` | Shared contract test cases (rates, inputs, expected HALF_EVEN results). |
 | `traffic/edge-inputs.txt` | Half-penny inputs where HALF_UP and HALF_EVEN disagree. |
+| `schemas/` | The schemas the envelopes' payloads follow, listed in the catalogue. |
 | `scripts/traffic.sh`, `scripts/gate.sh`, `scripts/tour.sh` | The load generator, the evidence gate and the narrated tour. |
 | `.run/` | The active stage, its rendered address table, the tooling entries `./demo` adds to every table (`tooling.yaml`), and the topology log (`records/topology.jsonl`). Gitignored; `./demo down` removes it. |

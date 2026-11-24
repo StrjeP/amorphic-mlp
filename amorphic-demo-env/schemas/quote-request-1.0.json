@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/quote-request@1.0",
+  "title": "Ask for a quote: an amount in one currency, priced in another",
+  "type": "object",
+  "required": ["amount", "from", "to"],
+  "additionalProperties": false,
+  "properties": {
+    "amount": { "type": "string", "description": "A decimal number, as text so no precision is lost, e.g. \"732.98\"" },
+    "from": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency code, e.g. GBP" },
+    "to": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency code, e.g. USD" }
+  }
+}

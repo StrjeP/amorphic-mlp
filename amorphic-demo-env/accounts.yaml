@@ -1,0 +1,11 @@
+# Accounts: what each one holds. Read by the positions capability (in-process in the app) on every call.
+# The sample account is chosen so the half-penny case lands in its total: 732.98 GBP is exactly
+# 916.225 USD, which Python 1.0 and Java 2.1 round to 916.22 and Java 2.0 rounds to 916.23.
+# The USD cash is already in the report's currency, so the plan makes no conversion call for it.
+accounts:
+  A-1001:
+    name: Sample account
+    positions:
+      - { name: Pounds, amount: "732.98", currency: GBP }
+      - { name: Euros, amount: "1000.00", currency: EUR }
+      - { name: Cash, amount: "250.00", currency: USD }

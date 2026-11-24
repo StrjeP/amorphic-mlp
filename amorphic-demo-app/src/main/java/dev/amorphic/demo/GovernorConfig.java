@@ -2,7 +2,7 @@ package dev.amorphic.demo;
 
 import dev.amorphic.demo.pricing.AddressTable;
 import dev.amorphic.demo.pricing.AddressTableException;
-import dev.amorphic.demo.pricing.ReloadablePricingCalc;
+import dev.amorphic.demo.pricing.ReloadableRouting;
 import dev.amorphic.governor.Governor;
 import dev.amorphic.governor.RuleGovernor;
 import dev.amorphic.governor.RuleTable;
@@ -25,19 +25,19 @@ import org.springframework.context.annotation.Configuration;
 class GovernorConfig {
 
     @Bean
-    Governor governor(Inventory inventory, ReloadablePricingCalc pricingCalc,
+    Governor governor(Inventory inventory, ReloadableRouting routing,
             @Value("${amorphic.catalogue}") String catalogue, @Value("${amorphic.governor.rules}") String rules) {
         Path cataloguePath = Path.of(catalogue);
         Path rulesPath = Path.of(rules);
         TableSink sink = (table, source) -> {
             try {
-                return new TableSink.Accepted(pricingCalc.apply(AddressTable.parse(table, source), source).generation());
+                return new TableSink.Accepted(routing.apply(AddressTable.parse(table, source), source).generation());
             } catch (AddressTableException e) {
                 return new TableSink.Refused(e.getMessage());
             }
         };
         Governor local = new RuleGovernor(inventory, () -> Catalogue.load(cataloguePath),
                 () -> RuleTable.load(rulesPath), sink, Clock.systemUTC());
-        return new RoutedGovernor(() -> pricingCalc.current().table(), local);
+        return new RoutedGovernor(() -> routing.current().table(), local);
     }
 }

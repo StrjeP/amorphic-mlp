@@ -5,7 +5,7 @@ plugins {
 rootProject.name = "amorphic-mlp"
 
 include("pricing-calc-core", "pricing-calc-service", "amorphic-demo-app", "addressing", "envelope", "access",
-    "inventory-core", "inventory-service", "governor-core", "governor-service", "topology")
+    "inventory-core", "inventory-service", "governor-core", "governor-service", "topology", "composer")
 project(":pricing-calc-core").projectDir = file("pricing-calc-java/pricing-calc-core")
 project(":pricing-calc-service").projectDir = file("pricing-calc-java/pricing-calc-service")
 project(":amorphic-demo-app").projectDir = file("amorphic-demo-app")
@@ -17,3 +17,4 @@ project(":governor-core").projectDir = file("amorphic-systems/governor-core")
 project(":inventory-service").projectDir = file("amorphic-systems/inventory-service")
 project(":governor-service").projectDir = file("amorphic-systems/governor-service")
 project(":topology").projectDir = file("amorphic-systems/topology")
+project(":composer").projectDir = file("amorphic-systems/composer")

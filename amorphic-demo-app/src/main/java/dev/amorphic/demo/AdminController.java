@@ -2,7 +2,7 @@ package dev.amorphic.demo;
 
 import dev.amorphic.demo.pricing.AddressTable;
 import dev.amorphic.demo.pricing.AddressTableException;
-import dev.amorphic.demo.pricing.ReloadablePricingCalc;
+import dev.amorphic.demo.pricing.ReloadableRouting;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -16,15 +16,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class AdminController {
 
-    private final ReloadablePricingCalc pricingCalc;
+    private final ReloadableRouting routing;
 
-    AdminController(ReloadablePricingCalc pricingCalc) {
-        this.pricingCalc = pricingCalc;
+    AdminController(ReloadableRouting routing) {
+        this.routing = routing;
     }
 
     @GetMapping("/admin/address-table")
-    ReloadablePricingCalc.Applied current() {
-        return pricingCalc.current();
+    ReloadableRouting.Applied current() {
+        return routing.current();
     }
 
     /**
@@ -33,17 +33,17 @@ class AdminController {
      * with 400 and the current routing stays live.
      */
     @PostMapping("/admin/address-table")
-    ReloadablePricingCalc.Applied apply(@RequestBody String yaml,
+    ReloadableRouting.Applied apply(@RequestBody String yaml,
             @RequestHeader(value = "X-Table-Source", required = false) String source) {
         String name = source == null || source.isBlank() ? "POST /admin/address-table" : source;
-        return pricingCalc.apply(AddressTable.parse(yaml, name), name);
+        return routing.apply(AddressTable.parse(yaml, name), name);
     }
 
     @ExceptionHandler(AddressTableException.class)
     ResponseEntity<Map<String, Object>> rejected(AddressTableException e) {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", e.getMessage(),
-                "kept", pricingCalc.current().routing(),
-                "generation", pricingCalc.current().generation()));
+                "kept", routing.current().routing(),
+                "generation", routing.current().generation()));
     }
 }

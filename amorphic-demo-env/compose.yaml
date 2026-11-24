@@ -22,6 +22,7 @@ services:
       # The declared instances (read whenever a table is applied) and the app's own identity in them:
       # a build without pricing-calc-core and one with it folded in are different instances.
       AMORPHIC_INSTANCES: /env/instances.yaml
+      AMORPHIC_ACCOUNTS: /env/accounts.yaml
       AMORPHIC_INSTANCE: demo-app-${APP_VARIANT:-remote}
       # Every call's topology is appended here, and read back when the app restarts.
       AMORPHIC_TOPOLOGY: /records/topology.jsonl
