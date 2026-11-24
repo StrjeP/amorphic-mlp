@@ -1,0 +1,41 @@
+# Instances: every instance the system declares, before it appears (spec 03, section 5).
+# The catalogue says what each version is; this file says which instances of them exist.
+# Edited by hand. ./demo allocates nothing: it deploys what is declared here and passes each
+# service its identity (AMORPHIC_INSTANCE). Read whenever a table is applied.
+#
+#   identity   stamped on for life (like a car's VIN). A restart keeps it; so does redeploying
+#              the same image
+#   realises   the catalogue address it is an instance of
+#   handle     how it is reached now (a binding URL). Two instances can share a handle at different
+#              times: Java 2.0 and 2.1 are both declared behind http://java-pricing:8080
+#
+# Each service reports itself on GET /meta. When a table is applied, the app checks that what
+# answers at each handle realises the routed address and is declared here; otherwise the table is
+# refused. The catalogue's accept-undeclared says whether an undeclared instance may answer anyway.
+instances:
+  - identity: py-pricing-v1.0
+    realises: pkg:amorphic/pricing-calc@1.0?lang=python
+    handle: http://py-pricing:8000
+
+  - identity: java-pricing-v2.0
+    realises: pkg:amorphic/pricing-calc@2.0?lang=java
+    handle: http://java-pricing:8080
+
+  - identity: java-pricing-v2.1
+    realises: pkg:amorphic/pricing-calc@2.1?lang=java
+    handle: http://java-pricing:8080
+
+  # The app, built without pricing-calc-core (stages 0 to 3b) and with it folded in (stage 4).
+  # A different build is a different instance. A folded-in core is a part of the app:
+  # demo-app-foldin/pricing-calc.
+  - identity: demo-app-remote
+    realises: pkg:amorphic/demo-app@0.1?lang=java
+    handle: http://app:8080
+
+  - identity: demo-app-foldin
+    realises: pkg:amorphic/demo-app@0.1?lang=java
+    handle: http://app:8080
+
+  # The app run from a checkout (tests, ./gradlew bootRun).
+  - identity: demo-app-dev
+    realises: pkg:amorphic/demo-app@0.1?lang=java

@@ -114,6 +114,13 @@ public record Envelope(String id, Address purpose, Map<String, Aspect> aspects) 
         return new Aspect(CAUSATION_SCHEMA, body);
     }
 
+    /** This envelope with one more aspect (or {@code name} replaced): the same id and purpose. */
+    public Envelope with(String name, Aspect aspect) {
+        Map<String, Aspect> more = new LinkedHashMap<>(aspects);
+        more.put(name, aspect);
+        return new Envelope(id, purpose, more);
+    }
+
     /** Convenience for building a payload body. */
     public static ObjectNode body() {
         return JsonNodeFactory.instance.objectNode();

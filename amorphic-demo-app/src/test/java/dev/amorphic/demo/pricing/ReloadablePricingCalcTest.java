@@ -48,7 +48,7 @@ class ReloadablePricingCalcTest {
 
     ReloadablePricingCalc calc() {
         return new ReloadablePricingCalc(PYTHON_ONLY, "startup", RoutingPricingCalcTest.FAKES, queued::add,
-                () -> 0.5, evidence, Clock.systemUTC());
+                () -> 0.5, evidence, Clock.systemUTC(), null, null);
     }
 
     @SuppressWarnings("unchecked")
@@ -82,8 +82,9 @@ class ReloadablePricingCalcTest {
                       address: pkg:amorphic/pricing-calc@9.9?lang=java
                       binding: { type: local }
                 """);
-        assertThatThrownBy(() -> new ReloadablePricingCalc(unreachable, "x", BindingFactory.reading(() -> StageAddressTablesTest.CATALOGUE), Runnable::run,
-                () -> 0.5, evidence, Clock.systemUTC())).isInstanceOf(AddressTableException.class);
+        assertThatThrownBy(() -> new ReloadablePricingCalc(unreachable, "x", BindingFactory.reading(() -> StageAddressTablesTest.CATALOGUE,
+                () -> StageAddressTablesTest.INSTANCES, StageAddressTablesTest.SELF, StageAddressTablesTest.DECLARED_META), Runnable::run,
+                () -> 0.5, evidence, Clock.systemUTC(), null, null)).isInstanceOf(AddressTableException.class);
 
         // Through apply on a live instance: the fake factory rejects an unknown url.
         AddressTable bad = table("""

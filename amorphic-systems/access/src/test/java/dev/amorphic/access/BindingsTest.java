@@ -161,4 +161,20 @@ class BindingsTest {
             assertThat(service.last.upgrade()).as("adapter").isNull();
         }
     }
+
+    @Test
+    void metaSaysWhoAServiceIs() throws Exception {
+        try (Stub service = new Stub(seen -> seen.path().equals("/meta")
+                ? new Stub.Answer(200, "{\"identity\": \"greeter-1\", \"realises\": \"pkg:amorphic/greeter@1.0?lang=java\", \"host\": null}")
+                : new Stub.Answer(404, "{}"))) {
+            assertThat(Meta.read(service.url + "/")).isEqualTo(new dev.amorphic.envelope.InstanceRef("greeter-1", GREETER, null));
+        }
+        try (Stub old = new Stub(seen -> new Stub.Answer(404, "{\"detail\": \"Not Found\"}"))) {
+            assertThatThrownBy(() -> Meta.read(old.url)).isInstanceOf(AccessException.class)
+                    .hasMessageContaining("/meta answered HTTP 404");
+        }
+        try (Stub odd = new Stub(seen -> new Stub.Answer(200, "{\"status\": \"ok\"}"))) {
+            assertThatThrownBy(() -> Meta.read(odd.url)).hasMessageContaining("didn't answer with an instance");
+        }
+    }
 }

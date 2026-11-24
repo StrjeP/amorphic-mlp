@@ -1,5 +1,6 @@
 package dev.amorphic.inventory;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -27,14 +28,27 @@ import java.util.stream.Stream;
  * The static catalogue (catalogue.yaml): every version of every capability and piece of tooling, where it may run
  * and how it is reached, and the schemas their envelopes use (spec 02).
  */
-public record Catalogue(Map<String, Capability> capabilities, List<Schema> schemas) {
+public record Catalogue(Map<String, Capability> capabilities, List<Schema> schemas,
+        @JsonProperty("accept-undeclared") Boolean acceptUndeclared) {
 
     public Catalogue {
         schemas = schemas == null ? List.of() : List.copyOf(schemas);
     }
 
+    public Catalogue(Map<String, Capability> capabilities, List<Schema> schemas) {
+        this(capabilities, schemas, null);
+    }
+
     public Catalogue(Map<String, Capability> capabilities) {
         this(capabilities, List.of());
+    }
+
+    /**
+     * Whether something may answer without being declared first (spec 03, section 5). If so, it is recorded as
+     * undeclared; if not, routing to it is refused. Off unless the catalogue says {@code accept-undeclared: true}.
+     */
+    public boolean acceptsUndeclared() {
+        return Boolean.TRUE.equals(acceptUndeclared);
     }
 
     /** {@code kind} is "capability" (routed business work) or "tooling" (catalogue, inventory, governor). */
@@ -152,7 +166,7 @@ public record Catalogue(Map<String, Capability> capabilities, List<Schema> schem
             if (c == null || c.capabilities() == null) {
                 throw new IllegalArgumentException("catalogue " + path + " has no 'capabilities'");
             }
-            return new Catalogue(c.capabilities(), located(c.schemas(), path));
+            return new Catalogue(c.capabilities(), located(c.schemas(), path), c.acceptUndeclared());
         } catch (java.nio.file.NoSuchFileException e) {
             throw new IllegalArgumentException("cannot read catalogue " + path + ": file not found", e);
         } catch (IOException e) {

@@ -26,7 +26,8 @@ The code as described in [The Governor](docs/articles/the-governor.md) article i
 | `amorphic-systems/addressing/` | Consistent addressing (spec 01): addresses, versions and ranges, instances, and the resolver (walking-skeleton slice 1) | Java 21, Gradle |
 | `amorphic-systems/envelope/` | The envelope (spec 02): a header plus self-describing aspects, and its JSON form (walking-skeleton slice 2) | Java 21, Gradle |
 | `amorphic-systems/access/` | Uniform access (spec 02): one `invoke(address, envelope)`, with local, remote and adapter bindings (walking-skeleton slice 2) | Java 21, Gradle |
-| `amorphic-systems/inventory-core/` | The inventory: observes the live table, `/health` and `/evidence` against the catalogue | Java 21, Gradle |
+| `amorphic-systems/topology/` | Topology (spec 03): the fixed record of what each call ran on, addressed by a hash of its content, in an append-only log (walking-skeleton slice 3) | Java 21, Gradle |
+| `amorphic-systems/inventory-core/` | The inventory: observes the live table, `/health` and `/evidence` against the catalogue; reads the declared instances and checks the handshake | Java 21, Gradle |
 | `amorphic-systems/inventory-service/` | The inventory as its own service, for a `remote` binding | Java 21, Spring Boot 3, Gradle |
 | `amorphic-systems/governor-core/` | The governor: applies the rule table to the inventory and proposes the next address table; a human approves | Java 21, Gradle |
 | `amorphic-systems/governor-service/` | The governor as its own service, for a `remote` binding | Java 21, Spring Boot 3, Gradle |

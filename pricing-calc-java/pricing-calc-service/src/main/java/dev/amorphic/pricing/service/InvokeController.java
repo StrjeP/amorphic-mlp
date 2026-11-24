@@ -5,6 +5,7 @@ import dev.amorphic.envelope.Aspect;
 import dev.amorphic.envelope.Envelope;
 import dev.amorphic.envelope.EnvelopeException;
 import dev.amorphic.envelope.EnvelopeJson;
+import dev.amorphic.envelope.InstanceRef;
 import dev.amorphic.pricing.PricingCalcCore;
 import java.math.BigDecimal;
 import java.util.Map;
@@ -16,7 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * The envelope (spec 02), spoken natively: a request envelope in, a reply envelope out. A request that can't be
- * done is a failure reply, still a 200; only an unreadable envelope is a 400.
+ * done is a failure reply, still a 200; only an unreadable envelope is a 400. Each reply carries an {@code instance}
+ * aspect saying who answered.
  */
 @RestController
 class InvokeController {
@@ -26,6 +28,11 @@ class InvokeController {
     private static final Address ANY_REQUEST = Address.of(REQUEST.kind(), REQUEST.name()).at("1.*");
 
     private final PricingCalcCore calc = new PricingCalcCore();
+    private final Self self;
+
+    InvokeController(Self self) {
+        this.self = self;
+    }
 
     @PostMapping(path = "/invoke", produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<Object> invoke(@RequestBody String body) {
@@ -35,7 +42,10 @@ class InvokeController {
         } catch (EnvelopeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-        return ResponseEntity.ok(EnvelopeJson.write(answer(request)));
+        // Every reply says who answered (spec 03, section 6), so the caller records who actually ran it.
+        Envelope reply = answer(request);
+        Envelope signed = self.instance().map(i -> reply.with(InstanceRef.ASPECT, i.aspect())).orElse(reply);
+        return ResponseEntity.ok(EnvelopeJson.write(signed));
     }
 
     private Envelope answer(Envelope request) {

@@ -105,6 +105,29 @@ wait_for_service() {
   die "$1 did not answer $url within 60s (try: ./demo logs $1)"
 }
 
+# The identity each pricing service is declared with in instances.yaml, and gets as AMORPHIC_INSTANCE
+# (see compose.yaml). Java's follows the version deployed.
+declared_identity() {
+  case "$1" in
+    py-pricing)   echo "py-pricing-v1.0" ;;
+    java-pricing) echo "java-pricing-$JAVA_VERSION" ;;
+  esac
+}
+
+# Waits until a pricing service's /meta reports the identity it was deployed with, so a table is
+# applied only once the new instance is the one answering (the app checks again, by handshake).
+wait_for_identity() {
+  local svc="$1" url expected i got=""
+  url="$(health_url "$svc")"; url="${url%/health}/meta"
+  expected="$(declared_identity "$svc")"
+  for i in $(seq 1 30); do
+    got="$(curl -fsS "$url" 2>/dev/null | jq -r '.identity // empty' 2>/dev/null || true)"
+    [[ "$got" == "$expected" ]] && return
+    sleep 1
+  done
+  die "$svc at $url says it is '${got:-nothing}', not $expected (try: ./demo logs $svc)"
+}
+
 app_running() {
   [[ -n "$(compose ps --status running -q app 2>/dev/null)" ]] \
     && curl -fsS -o /dev/null "$APP_URL/actuator/health" 2>/dev/null
@@ -137,7 +160,7 @@ show_change() {
   diff -u --label "active ($previous)" --label "$label" "$RUN_DIR/addresses.yaml" "$next" || true
 }
 
-# Starts the given pricing services (Java at $JAVA_VERSION) and waits for each one's /health.
+# Starts the given pricing services (Java at $JAVA_VERSION) and waits for each one's /health and /meta.
 start_services() {
   local services="$1" svc
   [[ -n "$services" ]] || return 0
@@ -146,7 +169,7 @@ start_services() {
   say "Starting services (the first build of each image takes a few minutes)"
   # shellcheck disable=SC2086
   quiet_compose up -d --build $services
-  for svc in $services; do wait_for_service "$svc"; done
+  for svc in $services; do wait_for_service "$svc"; wait_for_identity "$svc"; done
 }
 
 # Stops the pricing services that aren't in the given list.
@@ -254,7 +277,7 @@ cmd_stage() {
   case " $SERVICES " in *" java-pricing "*) build_java_image "$JAVA_VERSION" ;; esac
 
   # Render the new address table and show the governor's change against the active one.
-  mkdir -p "$RUN_DIR"
+  mkdir -p "$RUN_DIR/records"
   local label="stage-$stage.yaml"
   if [[ -n "$weight" ]]; then
     label="stage-$stage.yaml (weight $weight)"

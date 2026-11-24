@@ -19,6 +19,8 @@ dependencies {
     implementation(project(":addressing"))
     // Every pricing-calc call goes through invoke(address, envelope), whatever the binding (spec 02).
     implementation(project(":access"))
+    // Every call records the topology it ran on: who answered, in which role (spec 03).
+    implementation(project(":topology"))
     implementation(project(":inventory-core"))
     implementation(project(":governor-core"))
     if (foldIn) {

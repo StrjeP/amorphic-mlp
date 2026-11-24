@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/instance@1.0",
+  "title": "Who answered: an instance's identity, the address it realises, and its host's identity (spec 03, section 5)",
+  "type": "object",
+  "required": ["identity", "realises"],
+  "additionalProperties": false,
+  "properties": {
+    "identity": { "type": "string", "minLength": 1 },
+    "realises": { "type": "string", "minLength": 1 },
+    "host": { "type": ["string", "null"] }
+  }
+}

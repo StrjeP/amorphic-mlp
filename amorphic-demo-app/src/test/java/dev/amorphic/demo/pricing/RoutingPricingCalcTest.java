@@ -22,12 +22,13 @@ class RoutingPricingCalcTest {
     static final String JAVA = "pkg:amorphic/pricing-calc@2.0?lang=java";
 
     /** Fake bindings keyed by url: "even" rounds HALF_EVEN, "up" rounds HALF_UP, "down" always fails. */
-    static final BiFunction<Address, AddressTable.Binding, Invoker> FAKES = (address, binding) -> switch (binding.url()) {
-        case "even" -> rounding(RoundingMode.HALF_EVEN);
-        case "up" -> rounding(RoundingMode.HALF_UP);
-        case "down" -> (a, request) -> { throw new IllegalStateException("connection refused"); };
-        default -> throw new IllegalArgumentException(binding.url());
-    };
+    static final BiFunction<Address, AddressTable.Binding, Bound> FAKES = (address, binding) -> Bound.unchecked(
+            switch (binding.url()) {
+                case "even" -> rounding(RoundingMode.HALF_EVEN);
+                case "up" -> rounding(RoundingMode.HALF_UP);
+                case "down" -> (a, request) -> { throw new IllegalStateException("connection refused"); };
+                default -> throw new IllegalArgumentException(binding.url());
+            }, binding.url());
 
     /** An in-process binding that converts at 1.25 with the given rounding, answering envelopes. */
     static Invoker rounding(RoundingMode mode) {
@@ -51,7 +52,7 @@ class RoutingPricingCalcTest {
 
     RoutingPricingCalc calc(AddressTable.Capability c, double random) {
         // Runnable::run makes the background comparison synchronous for the test.
-        return RoutingPricingCalc.resolve(c, FAKES, Runnable::run, () -> random, evidence, Clock.systemUTC(), 0);
+        return RoutingPricingCalc.resolve(c, FAKES, Runnable::run, () -> random, evidence, Clock.systemUTC(), 0, null, null);
     }
 
     @SuppressWarnings("unchecked")
@@ -119,4 +120,90 @@ class RoutingPricingCalcTest {
         var cap = new AddressTable.Capability(role(PY, "even"), null, canary(JAVA, "up", 150));
         assertThatThrownBy(() -> calc(cap, 0.5)).isInstanceOf(AddressTableException.class).hasMessageContaining("0-100");
     }
+
+    // Spec 03: every call records the topology it ran on.
+
+    static final dev.amorphic.envelope.InstanceRef APP = new dev.amorphic.envelope.InstanceRef("demo-app-dev",
+            Address.parse("pkg:amorphic/demo-app@0.1?lang=java"), null);
+
+    static dev.amorphic.envelope.InstanceRef instance(String identity, String address) {
+        return new dev.amorphic.envelope.InstanceRef(identity, Address.parse(address), null);
+    }
+
+    /** Bindings the handshake has checked: "py" and "java" are who they say; "swapped" answers as someone else. */
+    static final BiFunction<Address, AddressTable.Binding, Bound> CHECKED = (address, binding) -> switch (binding.url()) {
+        case "py" -> new Bound(rounding(RoundingMode.HALF_EVEN), "py", instance("py-1", PY), false);
+        case "java" -> new Bound(signed(rounding(RoundingMode.HALF_UP), instance("java-1", JAVA)), "java",
+                instance("java-1", JAVA), false);
+        case "swapped" -> new Bound(signed(rounding(RoundingMode.HALF_UP), instance("java-old", JAVA)), "swapped",
+                instance("java-1", JAVA), false);
+        default -> throw new IllegalArgumentException(binding.url());
+    };
+
+    /** Adds the instance aspect to every reply, as a service speaking the envelope does. */
+    static Invoker signed(Invoker inner, dev.amorphic.envelope.InstanceRef who) {
+        return (a, request) -> {
+            var r = inner.invoke(a, request);
+            return new dev.amorphic.access.Reply(r.envelope().with(dev.amorphic.envelope.InstanceRef.ASPECT, who.aspect()), r.timing());
+        };
+    }
+
+    RoutingPricingCalc recording(AddressTable.Capability c, dev.amorphic.topology.TopologyLog log) {
+        if (evidence.generation() != 7) evidence.reset(7);
+        return RoutingPricingCalc.resolve(c, CHECKED, Runnable::run, () -> 0.5, evidence, Clock.systemUTC(), 7, log, APP);
+    }
+
+    @Test
+    void eachCallRecordsWhoAnsweredInEachRole() {
+        var log = dev.amorphic.topology.TopologyLog.inMemory();
+        var calc = recording(new AddressTable.Capability(role(PY, "py"), role(JAVA, "java"), null), log);
+        calc.convert("r1", new BigDecimal("10.02"), "GBP", "USD");
+        calc.convert("r2", new BigDecimal("10.06"), "GBP", "USD");
+
+        var all = log.topologies(Address.parse("pkg:topology/pricing-calc"));
+        assertThat(all).hasSize(1);
+        var t = all.get(0);
+        assertThat(t.caller()).isEqualTo(APP);
+        assertThat(t.roles()).extracting(r -> r.role() + " " + r.instance().identity() + " " + r.handle())
+                .containsExactly("champion py-1 py", "shadow java-1 java");
+        var calls = log.calls(t.address());
+        assertThat(calls).hasSize(2);
+        assertThat(calls.get(0).causedBy()).containsExactly("r1");
+        assertThat(calls.get(0).generation()).isEqualTo(7);
+
+        // Evidence counts the comparison under that topology.
+        assertThat(comparisons().get(0)).containsEntry("topology", t.address().toString()).containsEntry("total", 2L);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> last = (Map<String, Object>) comparisons().get(0).get("lastMismatch");
+        assertThat(last).containsEntry("topology", t.address().toString());
+    }
+
+    @Test
+    void aServiceSwappedBetweenCallsShowsUpAsADifferentTopology() {
+        var log = dev.amorphic.topology.TopologyLog.inMemory();
+        recording(new AddressTable.Capability(role(PY, "py"), role(JAVA, "java"), null), log)
+                .convert("r1", new BigDecimal("1.00"), "GBP", "USD");
+        recording(new AddressTable.Capability(role(PY, "py"), role(JAVA, "swapped"), null), log)
+                .convert("r2", new BigDecimal("1.00"), "GBP", "USD");
+
+        var all = log.topologies(Address.parse("pkg:topology/pricing-calc"));
+        assertThat(all).hasSize(2);
+        assertThat(all.get(1).roles().get(1).instance().identity()).as("who actually answered").isEqualTo("java-old");
+        assertThat(comparisons()).hasSize(2);
+    }
+
+    @Test
+    void aShadowThatFailsIsRecordedAsWhoTheHandshakeFound() {
+        BiFunction<Address, AddressTable.Binding, Bound> failing = (address, binding) -> "java".equals(binding.url())
+                ? new Bound((a, request) -> { throw new IllegalStateException("connection refused"); }, "java",
+                        instance("java-1", JAVA), false)
+                : CHECKED.apply(address, binding);
+        var log = dev.amorphic.topology.TopologyLog.inMemory();
+        RoutingPricingCalc.resolve(new AddressTable.Capability(role(PY, "py"), role(JAVA, "java"), null), failing,
+                Runnable::run, () -> 0.5, evidence, Clock.systemUTC(), 1, log, APP)
+                .convert("r1", new BigDecimal("1.00"), "GBP", "USD");
+        var t = log.topologies(Address.parse("pkg:topology/pricing-calc")).get(0);
+        assertThat(t.roles().get(1).instance().identity()).isEqualTo("java-1");
+    }
 }
+

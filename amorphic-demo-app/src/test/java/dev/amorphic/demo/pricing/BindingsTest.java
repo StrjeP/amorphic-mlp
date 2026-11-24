@@ -78,4 +78,41 @@ class BindingsTest {
                 .isInstanceOf(AddressTableException.class)
                 .hasMessageContaining("use schema pkg:schema/pricing-calc-convert-request@1.0, which the catalogue doesn't have");
     }
+
+    static final Address JAVA_21 = Address.parse("pkg:amorphic/pricing-calc@2.1?lang=java");
+    static final AddressTable.Binding JAVA_URL = new AddressTable.Binding("remote", "http://java-pricing:8080");
+
+    /** Spec 03, section 6: a lingering 2.0 behind the URL the table now gives to 2.1 is refused, naming both sides. */
+    @Test
+    void aLingeringOldVersionIsRefused() {
+        MetaReader lingering = (url, routed) -> new dev.amorphic.envelope.InstanceRef("java-pricing-v2.0",
+                Address.parse("pkg:amorphic/pricing-calc@2.0?lang=java"), null);
+        assertThatThrownBy(() -> Bindings.bind(JAVA_21, JAVA_URL, CATALOGUE, StageAddressTablesTest.INSTANCES,
+                StageAddressTablesTest.SELF, lingering))
+                .isInstanceOf(AddressTableException.class)
+                .hasMessage("routed to pkg:amorphic/pricing-calc@2.1?lang=java, but http://java-pricing:8080 is "
+                        + "java-pricing-v2.0, which realises pkg:amorphic/pricing-calc@2.0?lang=java");
+    }
+
+    @Test
+    void aServiceThatCantSayWhoItIsIsRefused() {
+        MetaReader silent = (url, routed) -> { throw new dev.amorphic.access.AccessException("connection refused"); };
+        assertThatThrownBy(() -> Bindings.bind(JAVA_21, JAVA_URL, CATALOGUE, StageAddressTablesTest.INSTANCES,
+                StageAddressTablesTest.SELF, silent))
+                .isInstanceOf(AddressTableException.class).hasMessageContaining("can't ask http://java-pricing:8080 who it is");
+    }
+
+    @Test
+    void aConfirmedRoleCarriesItsInstanceAndALocalRoleIsAPartOfTheApp() {
+        Bound remote = Bindings.bind(JAVA_21, JAVA_URL, CATALOGUE, StageAddressTablesTest.INSTANCES,
+                StageAddressTablesTest.SELF, StageAddressTablesTest.DECLARED_META);
+        assertThat(remote.instance().identity()).isEqualTo("java-pricing-v2.1");
+        assertThat(remote.handle()).isEqualTo("http://java-pricing:8080");
+
+        Address core = Address.parse("pkg:amorphic/pricing-calc@" + PricingCalcCore.VERSION + "?lang=java");
+        Bound local = Bindings.bind(core, LOCAL, CATALOGUE, StageAddressTablesTest.INSTANCES, StageAddressTablesTest.SELF,
+                (url, routed) -> { throw new AssertionError("a local role is not asked"); });
+        assertThat(local.instance()).isEqualTo(new dev.amorphic.envelope.InstanceRef("demo-app-dev/pricing-calc", core, "demo-app-dev"));
+        assertThat(local.handle()).isNull();
+    }
 }
