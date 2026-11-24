@@ -1,10 +1,10 @@
 # Step-by-step guide: run the story yourself
 
-This guide takes you through the whole demo on your own machine. A pricing capability starts as a Python service. A Java rewrite is caught with a rounding bug before any customer sees it, is fixed, earns trust in stages, and is finally folded into the app that calls it. The app's one pricing call never changes.
+This guide takes you through the whole demo on your own machine. A pricing capability starts as a Python service. A Java rewrite is caught with a rounding bug before any customer sees it, is fixed, earns trust in stages, and is finally folded into the app that calls it. Along the way the app also values a customer's account, a plan of several steps. The app's code never changes: it asks for what it wants, and the platform works out the steps.
 
 You'll do it twice. In **Part 1** you move the call yourself, one stage at a time, and read the evidence. In **Part 2** a rule-based governor proposes each move from that evidence, and you approve it. **Part 3** moves the tooling itself, and **Part 4** has a few experiments to try.
 
-Allow about 45 minutes, or five for the [narrated tour](#the-short-version-a-narrated-tour). Every output below is real, captured from a fresh clone on 2026-11-10. Request IDs, timings and exact counts change on every run, because the traffic is random.
+Allow about 45 minutes, or five for the [narrated tour](#the-short-version-a-narrated-tour). Every output below is real, captured from a fresh clone on 2026-11-10; the account report's output was captured on 2026-11-24. Request IDs, timings and exact counts change on every run, because the traffic is random.
 
 For the why behind it, read [the story](story.md) first. For the full reference, see the [demo README](../amorphic-demo-env/README.md).
 
@@ -49,7 +49,7 @@ If you want to see the whole progression before doing it step by step, run the t
 ./demo tour
 ```
 
-Here is part of a real run (captured on 2026-11-11):
+Here is part of a real run (captured on 2026-11-24):
 
 ```text
 Stage 1: shadow. Java 2.0 is checked, but serves no one
@@ -57,13 +57,22 @@ Every customer still gets Python's answer. Behind the scenes each request also g
 Java 2.0, and the two answers are compared.
   Sending 1200 customer quotes ... done
   Customers were answered by: Python 1.0 served 100% (1200)
-  Checks: 1200 answers from Python 1.0 were compared with Java 2.0. 327 disagreed.
+  Checks: 1200 answers from Python 1.0 were compared with Java 2.0. 329 disagreed.
   Verdict: not safe. The new version stays out of customers' way.
 
-  Java 2.0 got 327 prices wrong. No customer saw them, because only Python's answers
+  Java 2.0 got 329 prices wrong. No customer saw them, because only Python's answers
   were sent back.
   Here's one, asked directly: 732.98 GBP is exactly 916.225 USD, half a penny.
     Python 1.0 says 916.22   Java 2.0 says 916.23
+  Python rounds a half to the even digit; Java 2.0 always rounds it up. Java passed its
+  own tests, because none of them hit this case. Comparing it on live traffic found it
+  in seconds.
+
+  The same bug reaches an account's value. The sample account holds 732.98 GBP, 1000.00
+  EUR and 250.00 USD. Valuing it takes three steps: load what it holds, convert each
+  holding to USD (the cash needs no conversion), and add them up.
+    The customer is told 2216.22 USD, from Python's conversions.
+    On Java 2.0's conversions it would have been 2216.23 USD. That total was never sent.
 ```
 
 It ends with a summary:
@@ -72,7 +81,7 @@ It ends with a summary:
 What just happened
   Stage      Who answered customers                 What the evidence said
   0          Python 1.0 serves everyone             the baseline
-  1          Python serves; Java 2.0 checked        327 wrong answers caught; not safe
+  1          Python serves; Java 2.0 checked        329 wrong answers caught; not safe
   1b         Python serves; Java 2.1 checked        every answer matched; safe
   2          Java 10%, Python 90%                   every Java answer matched; safe
   2 (50%)    Java 50%, Python 50%                   every Java answer matched; safe
@@ -87,13 +96,25 @@ The rest of this guide does the same moves one at a time, so you can look at eac
 
 Three things are worth seeing before you run anything.
 
-**The one call site.** `amorphic-demo-app/src/main/java/dev/amorphic/demo/QuoteController.java` has the app's only pricing call:
+**What the app asks for.** The app never names what prices its answers. `amorphic-demo-app/src/main/java/dev/amorphic/demo/QuoteController.java` asks for an outcome, a quote:
 
 ```java
-PricingCalc.Result result = pricingCalc.convert(id, value, from, to);
+Run run = outcomes.quote(id, value, from, to);
 ```
 
-That line is the same in every stage. What changes is where the call goes.
+A composer looks up the quote's recipe in `amorphic-demo-env/catalogue.yaml` and runs it. A quote is one step, `convert`, which asks the pricing capability. The account report (`./demo report`) is a recipe of three steps:
+
+```yaml
+  - address: pkg:outcome/account-value@1.0
+    steps:
+      - name: positions          # what the account holds
+      - name: convert            # once for each position, skipping any already in USD
+        capability: pkg:amorphic/pricing-calc
+        each: positions.positions
+      - name: total              # add them up
+```
+
+(Shortened here; the file has the full recipe.) These lines are the same in every stage. What changes is where the pricing calls go.
 
 **An address table.** That decision lives in a small YAML file. Here is stage 0, `addresses/stage-0.yaml`:
 
@@ -208,6 +229,40 @@ GATE FAIL
 **This failure is the demo working.** Java 2.0 passed its build, but live comparison caught it disagreeing on 377 of 1,200 calls, and no customer saw a wrong answer. Every comparison is also an evidence log line (`./demo logs app`).
 
 In the original run the caught case was 732.98 GBP, which is exactly 916.225 USD. That input became `RoundingRegressionTest` in version 2.1, and a new golden vector, so the lesson is now part of the build.
+
+The same bug reaches an account report. Value the sample account, which holds 732.98 GBP, 1000.00 EUR and 250.00 USD:
+
+```bash
+./demo report
+```
+
+```json
+{
+  "account": "A-1001",
+  "currency": "USD",
+  "total": "2216.22",
+  "positions": [
+    { "name": "Pounds", "amount": "732.98", "currency": "GBP", "value": "916.22",
+      "convertedBy": "pkg:amorphic/pricing-calc@1.0?lang=python" },
+    { "name": "Euros", "amount": "1000.00", "currency": "EUR", "value": "1050.00",
+      "convertedBy": "pkg:amorphic/pricing-calc@1.0?lang=python" },
+    { "name": "Cash", "amount": "250.00", "currency": "USD", "value": "250.00",
+      "convertedBy": null }
+  ],
+  "outcome": "pkg:outcome/account-value@1.0",
+  "requestId": "8110dbaf-a2f9-42ce-9bab-027f93a92884"
+}
+```
+
+The customer gets Python's conversions, and the cash needed none. Java 2.0 was asked too, in the background, and the app worked out what the account would have been worth on its answers. That total was never sent; it is in the evidence:
+
+```bash
+curl -s localhost:8080/evidence | jq -c '.outcomes[] | select(.outcome == "pkg:outcome/account-value@1.0") | {served: .lastMismatch.served.amount, shadow: .lastMismatch.shadow.amount}'
+```
+
+```text
+{"served":"2216.22","shadow":"2216.23"}
+```
 
 ### Stage 1b: Fix
 
@@ -390,6 +445,16 @@ This is the one stage change that needs a rebuild: a running app can't load code
 ```
 
 Same call site, same address, same answer to the input that caught the bug. The separate Java service has gone; only the app is running.
+
+The account report runs the same three steps, now with every conversion inside the app:
+
+```bash
+./demo report | jq -c '{total, positions: [.positions[] | {name, value, convertedBy}]}'
+```
+
+```text
+{"total":"2216.22","positions":[{"name":"Pounds","value":"916.22","convertedBy":"pkg:amorphic/pricing-calc@2.1?lang=java"},{"name":"Euros","value":"1050.00","convertedBy":"pkg:amorphic/pricing-calc@2.1?lang=java"},{"name":"Cash","value":"250.00","convertedBy":null}]}
+```
 
 ## Part 2: Let the governor propose
 
