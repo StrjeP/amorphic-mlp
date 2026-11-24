@@ -322,7 +322,7 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 
 ## Slice 4 brief
 
-A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "Decided" first. **Decisions settled, 24 November 2026;** spec 04 comes next, before building.
+A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "Decided" first. **Settled, 24 November 2026**, with spec 04.
 
 **Goal:** the app stops calling pricing directly. Each endpoint states the outcome it wants, and a composer works out the plan, resolves each step's address and invokes it. `/quote` becomes a one-step plan. A new account report is a plan of several steps: load an account's positions, convert each to USD, and add them up. The tour's pricing story runs unchanged underneath, and at stage 1 the shadow shows Java 2.0 getting an account's total wrong, not just one price.
 
@@ -330,7 +330,7 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 
 ### Step 0: spec
 
-1. **Drafted, 24 November 2026.** Spec "04 - Composition" in The Knowledge (`realising/specs/`), from this brief and the composition notes; to settle with Stephen before building. It builds on spec 01 (addresses), spec 02 (causation) and spec 03 (a topology covers a whole plan).
+1. **Done, 24 November 2026.** Spec "04 - Composition" in The Knowledge (`realising/specs/`), from this brief and the composition notes, settled with Stephen. It builds on spec 01 (addresses), spec 02 (causation) and spec 03 (a topology covers a whole plan).
 
 ### The account report
 
