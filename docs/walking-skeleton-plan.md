@@ -350,7 +350,7 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 ### The composer
 
 5. **Outcomes are addressed.** **Settled:** their own kind, `pkg:outcome/quote@1.0` and `pkg:outcome/account-value@1.0`. An outcome is what a caller asks for, not a capability that runs, so the kinds stay apart. The topology is named after the outcome (`pkg:topology/account-value?hash=…`, spec 03, section 3). Spec 01's list of kinds (section 4.1) gains `outcome`.
-6. **Recipes live in the catalogue.** Each outcome lists its steps; each step names a capability address and where its input comes from. One fan-out form, "for each item of an earlier step's output", and one reduce step, the sum. This is a fixed recipe, not a planner: there is no choosing between recipes and no cost model. *To settle:* the sum as its own local capability (`pkg:amorphic/sum@1.0`, so every step is an `invoke`) or as the composer's own last step.
+6. **Recipes live in the catalogue.** Each outcome lists its steps; each step names a capability address and where its input comes from. One fan-out form, "for each item of an earlier step's output", and one reduce step, the sum. This is a fixed recipe, not a planner: there is no choosing between recipes and no cost model. **Settled:** the sum is its own local capability, `pkg:amorphic/sum@1.0`, so every step is an addressed `invoke`, appears in the topology, and could be swapped like any other.
 7. **Each step goes through what's there today.** A convert step is resolved and routed exactly as now: the address table, champion, shadow, canary, the handshake and evidence. The composer doesn't know about stages.
 8. **Routing is decided once per plan.** *To settle:* at the canary stage, a report's conversions either all go to the same champion (decided once when the plan starts, so a report is answered consistently and runs on one topology) or are split call by call as quotes are today. Once per plan is the leaning.
 9. **Causation.** The outcome request has its own envelope id. Each step's envelope names it as `causedBy`, so from a report you can reach every call it made, and from any call the report that caused it.
@@ -431,6 +431,7 @@ Found while checking the move: none of the four projects depends on a demo proje
 - **Composition depth.** One step doesn't show that composition is real (discussion item 2). The app gains an account report as a second outcome beside `/quote`, in the same app and on the same pricing services and stages: load an account's positions, convert each to USD, and sum them. That gives two capabilities in one plan, a fan-out, and causation from one request down to every call it made.
 - **Positions are local only.** `pkg:amorphic/positions@1.0` is a local handler in the app reading `accounts.yaml`: no service, stage files or handshake.
 - **Outcomes have their own kind.** `pkg:outcome/<name>@<version>`, apart from the capabilities that serve them; a plan's topology is named after its outcome.
+- **The sum is a capability.** `pkg:amorphic/sum@1.0`, bound local, so every step of a plan is an addressed `invoke`; the composer computes nothing itself.
 
 ## For discussion
 
