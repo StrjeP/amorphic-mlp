@@ -44,14 +44,14 @@ Some of the framework already exists in the MLP.
 | Catalogue and inventory (Catalogue) | A hand-edited file, plus an inventory that probes `/health` | Two aspects of one addressed asset, with a resolver for each kind. The catalogue gets its own address and binding, as the inventory and governor already have |
 | Envelope (Envelope) | None: plain `/convert?amount=` JSON | Primary purpose, a payload aspect and the required causation-links aspect. Nothing more |
 | Uniform access (Uniform Access) | `local` and `remote` bindings, for pricing-calc only | One `invoke(address, envelope) → envelope` for every binding. An adapter binding wraps a plain REST service, so the Python incumbent is unchanged |
-| Composition (Directory / Composer / Concierge) | `QuoteController` calls `PricingCalc` directly | `/quote` states an outcome, and a composer resolves a one-step plan |
+| Composition (Directory / Composer / Concierge) | `QuoteController` calls `PricingCalc` directly | `/quote` and a new account report each state an outcome, and a composer resolves its plan: one step for a quote; load positions, convert each, sum for the report |
 | Topology (Topologies) | Evidence lines record what served and what shadowed | A fixed record for each call: addresses, versions, bindings and table generation. The envelope's causation aspect links to it |
 | Evidence (The Governor) | Strong already: shadow, canary, the gate | Keyed by topology id instead of address pair. Otherwise unchanged |
 | Governor (The Governor) | Rule table; a human approves every move | Reads the new shapes. Behaviour unchanged |
 
 ## Out of scope for the skeleton
 
-- Composition beyond one step, and attaching new demands to running work (DAG Amortisation).
+- Composition beyond a fixed recipe of a few steps with one fan-out, and attaching new demands to running work (DAG Amortisation).
 - Planning by cost and value (MRP II).
 - Expectations (Outcome to Expectation).
 - Writes and state.
@@ -70,7 +70,7 @@ Each slice ends with the tour passing and the progress table below updated.
 | 1 | **Addressing.** An `Address` type to spec 01, and a catalogue resolver. It must name every rung of the ladder (see the note below) | The demo resolves through `Address`; no string comparison of addresses remains |
 | 2 | **Envelope and uniform access.** The envelope, `invoke`, and local, remote and adapter bindings | Every pricing-calc call goes through `invoke`; the Python service is unchanged |
 | 3 | **Topology.** One record per call, linked from the envelope; evidence keyed on it | `/evidence` can show the topology behind any mismatch |
-| 4 | **Composer.** An outcome in, a one-step plan out | `QuoteController` no longer names `PricingCalc` |
+| 4 | **Composer.** An outcome in, a plan out: a one-step quote, and an account report of several steps | No controller names `PricingCalc`; an account's value is reported through the composer, and the stage 1 shadow shows Java 2.0 getting the total wrong |
 | 5 | **Catalogue as a service.** Addressed, bindable `local` or `remote`, like the inventory and governor | All three tooling parts fold in and out the same way |
 | 6 | **Settle and tidy.** The inventory and governor work on the new shapes; `guide.md`, the tour narration and the MLP plan updated | A newcomer can follow the guide from a fresh clone |
 
@@ -320,6 +320,69 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 - Carrying the topology id inside the envelope (an aspect). The record points at the envelope instead.
 - Rotating or pruning the records file.
 
+## Slice 4 brief
+
+A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "Decided" first. **Draft, 24 November 2026:** the points marked *To settle* are open.
+
+**Goal:** the app stops calling pricing directly. Each endpoint states the outcome it wants, and a composer works out the plan, resolves each step's address and invokes it. `/quote` becomes a one-step plan. A new account report is a plan of several steps: load an account's positions, convert each to USD, and add them up. The tour's pricing story runs unchanged underneath, and at stage 1 the shadow shows Java 2.0 getting an account's total wrong, not just one price.
+
+**Why (from the Directory, Composer and Concierge articles).** A caller should say what it wants, not how to get it. The composer turns an outcome into a plan of addressed steps, so any step can be moved, replaced or checked without the caller changing. One step proves only that the call goes through a new layer; several steps with a fan-out prove the layer composes.
+
+### Step 0: spec
+
+1. Spec "04 - Composition" in The Knowledge (`realising/specs/`), drafted from this brief and settled with Stephen before building. It builds on spec 01 (addresses), spec 02 (causation) and spec 03 (a topology covers a whole plan).
+
+### The account report
+
+2. **The outcome.** `GET /accounts/{account}/value?currency=USD` returns the account's value in one currency, with each position's converted amount, who converted it, and the total.
+3. **The positions.** A new capability, `pkg:amorphic/positions@1.0`, returns an account's holdings: amount and currency for each. In the demo it is a local handler in the app, reading `amorphic-demo-env/accounts.yaml` (checked in). It is always local, so it needs no service, no stage files and no handshake. *To settle:* local only, or also a small service so the plan crosses two services.
+4. **The sample account.** Chosen so the half-penny case lands in the total:
+
+   | Position | Amount | In USD (Python 1.0, Java 2.1) | Java 2.0 |
+   |---|---|---|---|
+   | Pounds | 732.98 GBP | 916.22 | 916.23 |
+   | Euros | 1000.00 EUR | 1050.00 | 1050.00 |
+   | Cash | 250.00 USD | 250.00 (no conversion) | 250.00 |
+   | **Total** | | **2216.22** | **2216.23** |
+
+   The pricing services convert only GBP to USD, EUR to USD and GBP to EUR, and nothing to itself. So a position already in the report's currency needs no convert step, and the plan leaves it out. That is a small, real planning decision.
+
+### The composer
+
+5. **Outcomes are addressed.** *To settle:* a new kind, `pkg:outcome/quote@1.0` and `pkg:outcome/account-value@1.0`, so the topology is named after the outcome (spec 03, section 3).
+6. **Recipes live in the catalogue.** Each outcome lists its steps; each step names a capability address and where its input comes from. One fan-out form, "for each item of an earlier step's output", and one reduce step, the sum. This is a fixed recipe, not a planner: there is no choosing between recipes and no cost model. *To settle:* the sum as its own local capability (`pkg:amorphic/sum@1.0`, so every step is an `invoke`) or as the composer's own last step.
+7. **Each step goes through what's there today.** A convert step is resolved and routed exactly as now: the address table, champion, shadow, canary, the handshake and evidence. The composer doesn't know about stages.
+8. **Routing is decided once per plan.** *To settle:* at the canary stage, a report's conversions either all go to the same champion (decided once when the plan starts, so a report is answered consistently and runs on one topology) or are split call by call as quotes are today. Once per plan is the leaning.
+9. **Causation.** The outcome request has its own envelope id. Each step's envelope names it as `causedBy`, so from a report you can reach every call it made, and from any call the report that caused it.
+10. **One topology for the plan.** A report's topology is named after its outcome and lists each step's roles (spec 03 already allows this). Call records stay one per call, as now. A quote's topology is the one-step case.
+
+### What goes in `amorphic-systems/`
+
+11. **`:composer`** (`amorphic-systems/composer`, package `dev.amorphic.composer`). Depends on `:addressing`, `:envelope`, `:access` and `:topology`. `Recipe` (read from the catalogue), `Plan` (a recipe applied to an input: the steps with their resolved addresses) and `Composer.run(outcome, input) -> result`, which invokes each step through an `Invoker` it is given. Framework tests use neutral examples (`greeter`, `shout`), never pricing.
+12. **`:inventory-core`'s `Catalogue`** gains `outcomes` with their recipes.
+
+### In the demo
+
+13. **The app.** `QuoteController` asks the composer for `pkg:outcome/quote`; a new `AccountController` asks for `pkg:outcome/account-value`. Neither names `PricingCalc`. The pricing routing becomes the invoker the composer is given for pricing-calc steps; positions and sum are bound local.
+14. **Evidence** stays per convert call, so the tour's numbers don't change. A report also states the shadow's total where there is a shadow, so stage 1 can show "this account would have been valued at 2216.23".
+15. **`./demo`** gains `./demo report [account]`. The tour asks for the sample account's value at stage 1 (Python and Java 2.0 disagree by a cent) and at stage 4 (inside the app), in plain words. `guide.md` and the README gain the report, with captured output.
+
+### Verify
+
+- `./gradlew build` and the fold-in build; `checkFrameworkDependencies` passes with `:composer`.
+- `./demo tour` runs stages 0 to 4 with the same story and numbers, plus the report at stages 1 and 4.
+- At stage 1, the report's total is 2216.22, and its shadow total is 2216.23.
+- From a report's envelope id, `/topology/calls` lists the conversions it caused; the report's topology names both capabilities.
+- A position already in USD makes no convert call.
+
+### Not in slice 4
+
+- Choosing between recipes, planning by cost or value, and the Concierge.
+- Recipes beyond one fan-out and one reduce; conditional steps.
+- Attaching new demands to running work (DAG Amortisation).
+- Evidence or a governor gate on whole outcomes. Evidence stays per call.
+- Writes: the positions are read only.
+
 ## Moving out
 
 **When:** the first time something other than the pricing demo needs the skeleton. Likely candidates are the level 202 Quarkus capability or the reference implementation itself. A second sign is that slices stop changing the skeleton's interfaces.
@@ -363,10 +426,14 @@ Found while checking the move: none of the four projects depends on a demo proje
 - **Handshake.** Each service reports itself on `GET /meta` (identity, and `realises` from its own code). The app checks every remote role when a table is applied and refuses a mismatch; envelope replies also carry an `instance` aspect, so each call records who actually answered.
 - **Instances in text.** A small JSON object (`identity`, `realises` as a canonical address, `host` as the host's identity), not a new address syntax, since PURL has nowhere for "realises" or "host" (discussion item 7).
 
+24 November 2026, slice 4:
+
+- **Composition depth.** One step doesn't show that composition is real (discussion item 2). The app gains an account report as a second outcome beside `/quote`, in the same app and on the same pricing services and stages: load an account's positions, convert each to USD, and sum them. That gives two capabilities in one plan, a fan-out, and causation from one request down to every call it made.
+
 ## For discussion
 
 1. **Envelope on the wire.** Should the Java service speak the envelope natively while Python goes through an adapter? Or should both go through adapters at first, so slice 2 changes only the app? *Settled for slice 2: see Decided.*
-2. **Composition depth.** Is one step enough to show the composer exists, or does the skeleton need two (for example, quote = convert, then add a fee) to show that composition is real?
+2. **Composition depth.** Is one step enough to show the composer exists, or does the skeleton need two (for example, quote = convert, then add a fee) to show that composition is real? *Settled for slice 4: see Decided.*
 3. **Where topology records live.** In memory and logs only, like evidence today, or in a simple append-only file? *Settled for slice 3: see Decided.*
 4. **Address grammar.** Should the address parse with purl-spec, or with an own grammar to spec 01 that reads PURL as one form? (Shared grammar, not shared standard.) *Settled for slice 1: see Decided.*
 5. **Slice order.** Should topology come before the envelope, since evidence is already most of the way to a topology record? *Settled: envelope first.*
