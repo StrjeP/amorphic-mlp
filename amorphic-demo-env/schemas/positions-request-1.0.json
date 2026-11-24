@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/positions-request@1.0",
+  "title": "Ask for an account's positions",
+  "type": "object",
+  "required": ["account"],
+  "additionalProperties": false,
+  "properties": {
+    "account": { "type": "string", "description": "The account's id, e.g. A-1001" }
+  }
+}

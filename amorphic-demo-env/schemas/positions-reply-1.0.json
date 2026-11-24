@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/positions-reply@1.0",
+  "title": "An account's positions: what it holds, in each currency",
+  "type": "object",
+  "required": ["account", "positions"],
+  "additionalProperties": false,
+  "properties": {
+    "account": { "type": "string" },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "amount", "currency"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "description": "What the position is, in plain words" },
+          "amount": { "type": "string", "description": "A decimal number, as text" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        }
+      }
+    }
+  }
+}

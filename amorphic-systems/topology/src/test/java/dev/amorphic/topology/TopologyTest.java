@@ -19,7 +19,7 @@ class TopologyTest {
     static final Instant NOW = Instant.parse("2026-11-24T10:00:00Z");
 
     static Topology.Role role(String role, Address address, String identity) {
-        return new Topology.Role(role, address, address, "remote", "http://greeter:8080",
+        return new Topology.Role("greet", role, address, address, "remote", "http://greeter:8080",
                 new InstanceRef(identity, address, null), false);
     }
 
@@ -41,10 +41,10 @@ class TopologyTest {
     @Test
     void readsBackWhatItWrites() {
         Topology t = new Topology("greeter", HOST, List.of(
-                new Topology.Role("champion", V1, V1, "local", null, InstanceRef.of(
+                new Topology.Role("greet", "champion", V1, V1, "local", null, InstanceRef.of(
                         dev.amorphic.addressing.Instance.part(
                                 dev.amorphic.addressing.Instance.deployed(HOST.realises(), "host-1", null), "greeter", V1)), false),
-                new Topology.Role("shadow", V2, V2, "remote", "http://py:8000", null, false)));
+                new Topology.Role("greet", "shadow", V2, V2, "remote", "http://py:8000", null, false)));
         assertThat(Topology.read(t.json())).isEqualTo(t);
         assertThat(Topology.read(t.json()).address()).isEqualTo(t.address());
     }

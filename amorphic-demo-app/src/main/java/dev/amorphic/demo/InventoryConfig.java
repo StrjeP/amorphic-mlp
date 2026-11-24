@@ -2,7 +2,8 @@ package dev.amorphic.demo;
 
 import dev.amorphic.demo.evidence.EvidenceRecorder;
 import dev.amorphic.demo.pricing.AddressTable;
-import dev.amorphic.demo.pricing.ReloadablePricingCalc;
+import dev.amorphic.demo.compose.LocalCapabilities;
+import dev.amorphic.demo.pricing.ReloadableRouting;
 import dev.amorphic.inventory.Catalogue;
 import dev.amorphic.inventory.EvidenceView;
 import dev.amorphic.inventory.HttpHealthProbe;
@@ -29,24 +30,32 @@ import org.springframework.context.annotation.Configuration;
 class InventoryConfig {
 
     @Bean
-    Inventory inventory(ReloadablePricingCalc pricingCalc, EvidenceRecorder evidence,
+    Inventory inventory(ReloadableRouting routing, EvidenceRecorder evidence,
             @Value("${amorphic.catalogue}") String catalogue,
             @Value("${amorphic.inventory.min-evidence}") int minEvidence) {
         Path cataloguePath = Path.of(catalogue);
         Inventory local = new ObservedInventory(
-                () -> routingView(pricingCalc.current()),
+                () -> routingView(routing.current()),
                 () -> evidenceView(evidence.summary()),
                 new HttpHealthProbe(),
                 // Read on every observation: the catalogue is edited by hand and nothing is cached.
                 () -> Catalogue.load(cataloguePath),
                 minEvidence,
                 Clock.systemUTC(),
-                // Where the tooling runs when the address table doesn't route it.
-                Tooling.defaultPlacements(cataloguePath.toString()));
-        return new RoutedInventory(() -> pricingCalc.current().table(), local);
+                // Where the tooling runs when the address table doesn't route it, and the capabilities that
+                // always run in the app.
+                placements(cataloguePath.toString()));
+        return new RoutedInventory(() -> routing.current().table(), local);
     }
 
-    static RoutingView routingView(ReloadablePricingCalc.Applied applied) {
+    static Map<dev.amorphic.addressing.Address, String> placements(String catalogue) {
+        Map<dev.amorphic.addressing.Address, String> m = new java.util.LinkedHashMap<>(Tooling.defaultPlacements(catalogue));
+        m.put(LocalCapabilities.POSITIONS, "in-process in the demo app (always)");
+        m.put(LocalCapabilities.SUM, "in-process in the demo app (always)");
+        return m;
+    }
+
+    static RoutingView routingView(ReloadableRouting.Applied applied) {
         List<RoutingView.Role> roles = new ArrayList<>();
         applied.table().capabilities().forEach((capability, c) -> {
             add(roles, capability, "champion", c.champion());

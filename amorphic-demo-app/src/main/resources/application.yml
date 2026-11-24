@@ -7,6 +7,8 @@ amorphic:
   catalogue: ../amorphic-demo-env/catalogue.yaml
   # The declared instances (spec 03). Overridden in Docker by AMORPHIC_INSTANCES=/env/instances.yaml
   instances: ../amorphic-demo-env/instances.yaml
+  # The accounts the positions capability reads. Overridden in Docker by AMORPHIC_ACCOUNTS=/env/accounts.yaml
+  accounts: ../amorphic-demo-env/accounts.yaml
   # The app's own identity, as declared there. ./demo passes demo-app-remote or demo-app-foldin;
   # demo-app-dev is the one declared for running the app from a checkout (tests, bootRun).
   instance: demo-app-dev

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/sum-request@1.0",
+  "title": "Add up amounts, all in one currency",
+  "type": "object",
+  "required": ["amounts", "currency"],
+  "additionalProperties": false,
+  "properties": {
+    "amounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["amount", "currency"],
+        "properties": {
+          "amount": { "type": "string", "description": "A decimal number, as text" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        }
+      }
+    },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "Every amount must be in this currency" }
+  }
+}

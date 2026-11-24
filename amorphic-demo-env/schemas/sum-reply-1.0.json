@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/sum-reply@1.0",
+  "title": "The total",
+  "type": "object",
+  "required": ["amount", "currency"],
+  "additionalProperties": false,
+  "properties": {
+    "amount": { "type": "string", "description": "A decimal number, as text" },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+  }
+}

@@ -1,7 +1,9 @@
 package dev.amorphic.demo;
 
+import dev.amorphic.composer.CompositionException;
+import dev.amorphic.composer.Run;
+import dev.amorphic.demo.compose.Outcomes;
 import dev.amorphic.demo.evidence.EvidenceRecorder;
-import dev.amorphic.demo.pricing.PricingCalc;
 import dev.amorphic.demo.pricing.PricingRejectedException;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -23,15 +25,18 @@ class QuoteController {
 
     private static final Logger LOG = LoggerFactory.getLogger(QuoteController.class);
 
-    private final PricingCalc pricingCalc;
+    private final Outcomes outcomes;
     private final EvidenceRecorder evidence;
 
-    QuoteController(PricingCalc pricingCalc, EvidenceRecorder evidence) {
-        this.pricingCalc = pricingCalc;
+    QuoteController(Outcomes outcomes, EvidenceRecorder evidence) {
+        this.outcomes = outcomes;
         this.evidence = evidence;
     }
 
-    /** The business endpoint. Its one pricing call never changes between stages. */
+    /**
+     * The business endpoint. It asks for the quote outcome and never names what prices it: that is the composer's
+     * plan, routed by the address table, and it never changes between stages.
+     */
     @GetMapping("/quote")
     Map<String, Object> quote(@RequestParam String amount, @RequestParam String from, @RequestParam String to,
             @RequestHeader(value = "X-Request-Id", required = false) String requestId) {
@@ -43,13 +48,17 @@ class QuoteController {
             throw new PricingRejectedException("invalid amount '" + amount + "'");
         }
 
-        PricingCalc.Result result = pricingCalc.convert(id, value, from, to);
+        Run run = outcomes.quote(id, value, from, to);
+        if (run.failed()) {
+            throw new PricingRejectedException(run.failure().reason());
+        }
+        var served = run.step("convert").route().served();
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("amount", result.amount().toPlainString());
-        body.put("currency", result.currency());
-        body.put("servedBy", result.servedBy());
-        body.put("binding", result.binding());
+        body.put("amount", run.result().path("amount").asText());
+        body.put("currency", run.result().path("currency").asText());
+        body.put("servedBy", served.resolved().toString());
+        body.put("binding", served.binding());
         body.put("requestId", id);
         return body;
     }
@@ -70,8 +79,8 @@ class QuoteController {
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    ResponseEntity<Map<String, String>> unavailable(RuntimeException e) {
+    @ExceptionHandler(CompositionException.class)
+    ResponseEntity<Map<String, String>> unavailable(CompositionException e) {
         LOG.warn("pricing-calc call failed", e);
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(Map.of("error", "pricing-calc unavailable: " + e.getMessage()));

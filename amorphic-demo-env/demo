@@ -505,6 +505,11 @@ cmd_quote() {
   curl -fsS "$APP_URL/quote?amount=$1&from=${2:-GBP}&to=${3:-USD}" | jq .
 }
 
+cmd_report() {
+  local account="${1:-A-1001}" currency="${2:-USD}"
+  curl -sS "$APP_URL/accounts/$account/value?currency=$currency" | jq .
+}
+
 cmd_status() {
   if [[ -f "$RUN_DIR/stage" ]]; then
     local stage
@@ -570,6 +575,7 @@ Usage: ./demo <command> [args]
   apply <file>              Push an address table to the running app (routing only, no containers).
   diff <from> <to>          Show what the governor changes between two stages' address tables.
   quote <amount> [from] [to]  Call the app's /quote (default GBP -> USD).
+  report [account] [currency]  Value an account (default A-1001 in USD): load its positions, convert each, add them up.
   traffic [options]         Send steady /quote load (see ./demo traffic --help).
   evidence                  Show the app's /evidence summary.
   inventory [--json]        Observe the system now: routing, /health of each address, readiness, catalogue.
@@ -595,6 +601,7 @@ main() {
     apply)    cmd_apply "$@" ;;
     diff)     cmd_diff "$@" ;;
     quote)    cmd_quote "$@" ;;
+    report)   cmd_report "$@" ;;
     tour)     exec "$ENV_DIR/scripts/tour.sh" "$@" ;;
     traffic)  exec "$ENV_DIR/scripts/traffic.sh" "$@" ;;
     evidence) curl -fsS "$APP_URL/evidence" | jq . ;;

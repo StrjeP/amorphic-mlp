@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pkg:schema/account-value-request@1.0",
+  "title": "Ask for an account's value in one currency",
+  "type": "object",
+  "required": ["account", "currency"],
+  "additionalProperties": false,
+  "properties": {
+    "account": { "type": "string", "description": "The account's id, e.g. A-1001" },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency code to value it in, e.g. USD" }
+  }
+}
