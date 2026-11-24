@@ -262,15 +262,15 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 
 ### Step 0: spec
 
-1. Draft spec "03 - Topology" in The Knowledge (`realising/specs/`), from the note above and this brief, and settle it with Stephen before building. It builds on spec 01 (instances) and spec 02 (causation).
+1. **Drafted, 24 November 2026.** Spec "03 - Topology" in The Knowledge (`realising/specs/`), from the note above and this brief. Settle it with Stephen before building. It builds on spec 01 (instances) and spec 02 (causation).
 
 ### The shape
 
-2. **A topology is the resolved shape, not the call.** For one call it lists each role (champion, shadow, canary) with its requested address, the address it resolved to, the binding, and the instance that ran it, plus the table generation and the caller (the app's instance). **Settled:** its id is a hash of that content, so calls that ran on the same shape share one topology, and evidence keyed by topology id still counts like today's address pairs, just more exactly.
+2. **A topology is the resolved shape, not the call.** For one call it lists each role (champion, shadow, canary) with its requested address, the address it resolved to, the binding, and the instance that ran it, plus the caller (the app's instance). The table generation is not part of it: it goes in the call record, so a table change that leaves the shape alone keeps the same topology. **Settled:** its id is a hash of that content, so calls that ran on the same shape share one topology, and evidence keyed by topology id still counts like today's address pairs, just more exactly.
    - **A topology has an address,** like everything else: kind `topology`, named after the capability, with the hash as a qualifier, for example `pkg:topology/pricing-calc?hash=5f2c1a9e`. This needs no change to the grammar or `Address`. Broadening it to `pkg:topology/pricing-calc` asks for every topology pricing-calc has run on, which is the question to ask once a defect is found. A topology is always looked up by its exact address, not through the `Resolver` (which picks among versions).
    - When the composer lands (slice 4), a topology covers a whole plan, and the name becomes the outcome (for example `quote`).
    - **Later:** the hash as a version under a second version scheme (for example `pkg:topology/pricing-calc@#5f2c1a9e`). That is the second scheme spec 01 defers until one is needed (section 5's symbol idea); it changes spec 01, `Version` and the parser, so not now.
-3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the topology's address, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
+3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the table generation, the topology's address, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
 4. **Instances in text.** **Settled:** no new address syntax. An instance is written as a small JSON object, `{"identity", "realises", "host"}`, with `realises` as a canonical address and `host` as the host's identity. PURL has nowhere for "realises" or "host" (discussion item 7), and this avoids inventing a form before one is needed.
 5. **Instances are declared before they appear (spec 01, section 8).** **Settled:** the system allocates an identity when it declares an instance, not when the instance turns up.
    - `amorphic-demo-env/instances.yaml` (checked in, beside the catalogue; the inventory's half of it) declares each instance: its `identity`, the address it `realises`, and its `handle` (the binding URL). For example `java-pricing-2.1` realises `pkg:amorphic/pricing-calc@2.1?lang=java` at `http://java-pricing:8080`. Java 2.0 and 2.1 are two declared instances behind the same URL, which is how the demo swaps them.
@@ -290,7 +290,7 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 10. **`:access`** gains `Meta.read(url)`: `GET {url}/meta` into an `Instance`, over the same HTTP/1.1 client.
 11. **`:inventory-core`** gains `Instances`: loads `instances.yaml` and answers "what is declared for this handle and address?" `Catalogue` gains `acceptUndeclared`. The inventory's snapshot lists declared instances beside what it observes.
 12. **`:topology`** (`amorphic-systems/topology`, package `dev.amorphic.topology`). Depends on `:addressing`, `:envelope` and Jackson only.
-   - `Topology` (generation, caller, roles) with a content-hash `id()` and an `address()` (`pkg:topology/<name>?hash=<id>`), and `CallRecord` (envelope id, `causedBy`, topology address, time).
+   - `Topology` (caller, roles) with a content-hash `id()` and an `address()` (`pkg:topology/<name>?hash=<id>`), and `CallRecord` (envelope id, `causedBy`, generation, topology address, time).
    - `TopologyLog`: append-only JSON lines in one file. `record(call, topology)` writes the topology once and the call every time; `topology(address)` and `calls(address)` read back, and `topologies(name)` lists every topology under a broader address. It survives a restart: on start it reads the file to learn which topologies it has already written.
 
 ### In the demo
@@ -357,7 +357,7 @@ Found while checking the move: none of the four projects depends on a demo proje
 23 November 2026, slice 3:
 
 - **Topology records** live in a simple append-only file (JSON lines), so a record that is meant to be fixed outlives the process (discussion item 3).
-- **Topology identity and address.** The id is a hash of the topology's content; the topology is addressed like anything else, with the hash as a qualifier (`pkg:topology/pricing-calc?hash=…`). The hash as a second version scheme is noted for later.
+- **Topology identity and address.** The id is a hash of the topology's content, without the table generation (that goes in the call record, 24 November); the topology is addressed like anything else, with the hash as a qualifier (`pkg:topology/pricing-calc?hash=…`). The hash as a second version scheme is noted for later.
 - **Declared instances.** The system allocates an identity when it declares an instance (`instances.yaml`), ahead of it appearing; `./demo` allocates nothing. Appearing undeclared is allowed only where the catalogue's `accept-undeclared` says so, and is recorded as undeclared.
 - **Handshake.** Each service reports itself on `GET /meta` (identity, and `realises` from its own code). The app checks every remote role when a table is applied and refuses a mismatch; envelope replies also carry an `instance` aspect, so each call records who actually answered.
 - **Instances in text.** A small JSON object (`identity`, `realises` as a canonical address, `host` as the host's identity), not a new address syntax, since PURL has nowhere for "realises" or "host" (discussion item 7).
