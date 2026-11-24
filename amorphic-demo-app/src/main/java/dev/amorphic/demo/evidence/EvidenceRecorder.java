@@ -14,14 +14,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Evidence: one JSON log line per call, plus in-memory counters per served address
- * and per (served, shadow) address pair. Counters live only as long as the process.
+ * Evidence: one JSON log line per call, plus in-memory counters per served address and per comparison. A
+ * comparison is counted per topology (spec 03): the exact instances compared, not just their addresses, so a
+ * service swapped behind the same address is counted apart. Counters live only as long as the process; the
+ * topologies themselves are kept in the topology log.
  */
 public class EvidenceRecorder {
 
     private static final Logger LOG = LoggerFactory.getLogger("evidence");
 
-    /** What happened on one call. shadow* fields are null when nothing was compared. */
+    /**
+     * What happened on one call. shadow* fields are null when nothing was compared. {@code topology} is the address
+     * of the topology it ran on, or null when none is recorded.
+     */
     public record Call(
             long generation,
             Instant timestamp,
@@ -37,7 +42,8 @@ public class EvidenceRecorder {
             BigDecimal shadowValue,
             String shadowError,
             Timings servedTimings,
-            Timings shadowTimings) {
+            Timings shadowTimings,
+            String topology) {
 
         public boolean compared() {
             return shadowAddress != null;
@@ -67,7 +73,7 @@ public class EvidenceRecorder {
 
     private record ServedKey(String address, String binding) {}
 
-    private record PairKey(String served, String shadow) {}
+    private record PairKey(String served, String shadow, String topology) {}
 
     private static final class PairStats {
         long total;
@@ -95,7 +101,7 @@ public class EvidenceRecorder {
             }
             served.merge(new ServedKey(call.servedAddress(), call.servedBinding()), 1L, Long::sum);
             if (call.compared()) {
-                PairStats s = pairs.computeIfAbsent(new PairKey(call.servedAddress(), call.shadowAddress()),
+                PairStats s = pairs.computeIfAbsent(new PairKey(call.servedAddress(), call.shadowAddress(), call.topology()),
                         k -> new PairStats());
                 s.total++;
                 if (call.match()) {
@@ -117,7 +123,7 @@ public class EvidenceRecorder {
                 "address", k.address(), "binding", k.binding(), "total", total)));
         List<Map<String, Object>> comparisons = new ArrayList<>();
         pairs.forEach((k, s) -> comparisons.add(ordered(
-                "served", k.served(), "shadow", k.shadow(), "total", s.total, "matches", s.matches,
+                "served", k.served(), "shadow", k.shadow(), "topology", k.topology(), "total", s.total, "matches", s.matches,
                 "mismatches", s.mismatches, "consecutiveMatches", s.consecutiveMatches,
                 "lastMismatch", s.lastMismatch)));
         return ordered("generation", generation, "served", servedOut, "comparisons", comparisons);
@@ -146,7 +152,8 @@ public class EvidenceRecorder {
                 "input", ordered("amount", call.amount().toPlainString(), "from", call.from(), "to", call.to()),
                 "servedValue", call.servedValue().toPlainString(),
                 "shadowValue", call.shadowValue() == null ? null : call.shadowValue().toPlainString(),
-                "shadowError", call.shadowError());
+                "shadowError", call.shadowError(),
+                "topology", call.topology());
     }
 
     private void log(Call call) {
@@ -161,7 +168,8 @@ public class EvidenceRecorder {
                 "address_shadow", call.shadowAddress(),
                 "served_value", call.servedValue().toPlainString(),
                 "shadow_value", call.shadowValue() == null ? null : call.shadowValue().toPlainString(),
-                "match", call.compared() ? call.match() : null);
+                "match", call.compared() ? call.match() : null,
+                "topology", call.topology());
         if (call.shadowError() != null) {
             line.put("shadow_error", call.shadowError());
         }

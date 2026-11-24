@@ -1,8 +1,9 @@
 package dev.amorphic.demo.pricing;
 
-import dev.amorphic.access.Invoker;
 import dev.amorphic.addressing.Address;
 import dev.amorphic.demo.evidence.EvidenceRecorder;
+import dev.amorphic.envelope.InstanceRef;
+import dev.amorphic.topology.TopologyLog;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -18,7 +19,8 @@ import org.slf4j.LoggerFactory;
  * address table, and swaps in a new routing when a new table is applied, with no restart.
  *
  * <p>A new table is fully resolved before the swap, so a table that can't be honoured is
- * rejected and the current routing keeps serving. Each applied table is a new generation, and
+ * rejected and the current routing keeps serving. Resolving includes the handshake with every remote role, so a
+ * table is also refused when what answers isn't what it routes to. Each applied table is a new generation, and
  * evidence restarts with it.
  */
 public class ReloadablePricingCalc implements PricingCalc {
@@ -31,21 +33,29 @@ public class ReloadablePricingCalc implements PricingCalc {
 
     private record State(Applied applied, RoutingPricingCalc routing) {}
 
-    private final BiFunction<Address, AddressTable.Binding, Invoker> bindings;
+    private final BiFunction<Address, AddressTable.Binding, Bound> bindings;
     private final Executor background;
     private final DoubleSupplier random;
     private final EvidenceRecorder evidence;
     private final Clock clock;
+    private final TopologyLog topologies;
+    private final InstanceRef caller;
     private final AtomicReference<State> state = new AtomicReference<>();
 
+    /**
+     * @param topologies where every call's topology is recorded, or null to record none
+     * @param caller     the app's own instance, the caller in every topology
+     */
     public ReloadablePricingCalc(AddressTable initial, String source,
-            BiFunction<Address, AddressTable.Binding, Invoker> bindings, Executor background,
-            DoubleSupplier random, EvidenceRecorder evidence, Clock clock) {
+            BiFunction<Address, AddressTable.Binding, Bound> bindings, Executor background,
+            DoubleSupplier random, EvidenceRecorder evidence, Clock clock, TopologyLog topologies, InstanceRef caller) {
         this.bindings = bindings;
         this.background = background;
         this.random = random;
         this.evidence = evidence;
         this.clock = clock;
+        this.topologies = topologies;
+        this.caller = caller;
         apply(initial, source);
     }
 
@@ -59,7 +69,7 @@ public class ReloadablePricingCalc implements PricingCalc {
         long next = current == null ? 1 : current.applied().generation() + 1;
         table.checkTooling();
         RoutingPricingCalc routing = RoutingPricingCalc.resolve(table.capability(CAPABILITY), bindings, background,
-                random, evidence, clock, next);
+                random, evidence, clock, next, topologies, caller);
         Applied applied = new Applied(next, clock.instant(), source, routing.describe(), table);
         // Reset first: calls still finishing on the old routing carry the old generation and are dropped.
         evidence.reset(next);

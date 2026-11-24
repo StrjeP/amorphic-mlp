@@ -19,9 +19,17 @@ services:
       # so hand edits apply straight away.
       AMORPHIC_CATALOGUE: /env/catalogue.yaml
       AMORPHIC_GOVERNOR_RULES: /env/governor-rules.yaml
+      # The declared instances (read whenever a table is applied) and the app's own identity in them:
+      # a build without pricing-calc-core and one with it folded in are different instances.
+      AMORPHIC_INSTANCES: /env/instances.yaml
+      AMORPHIC_INSTANCE: demo-app-${APP_VARIANT:-remote}
+      # Every call's topology is appended here, and read back when the app restarts.
+      AMORPHIC_TOPOLOGY: /records/topology.jsonl
     volumes:
       # ./demo renders the active stage's address table into .run/
       - ./.run:/config:ro
+      # The topology log: writable, and kept until ./demo down.
+      - ./.run/records:/records
       # This directory, not single files: an editor that saves by replacing a file would leave a
       # single-file mount pointing at the old one.
       - .:/env:ro
@@ -30,11 +38,17 @@ services:
     image: amorphic/pricing-calc-py:1.0
     build: ../pricing-calc-py
     ports: ["8000:8000"]
+    environment:
+      # Its identity as declared in instances.yaml. It reports it, with what it realises, on GET /meta.
+      AMORPHIC_INSTANCE: py-pricing-v1.0
 
   java-pricing:
     # Built by ./demo: the core from the git tag pricing-calc-java/<version>, the service shell from HEAD.
     image: amorphic/pricing-calc-java:${JAVA_VERSION:-v2.1}
     ports: ["8090:8080"]
+    environment:
+      # Its identity as declared in instances.yaml: one per version deployed behind this URL.
+      AMORPHIC_INSTANCE: java-pricing-${JAVA_VERSION:-v2.1}
 
   inventory:
     image: amorphic/inventory-service:0.1

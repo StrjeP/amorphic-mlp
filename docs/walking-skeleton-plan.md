@@ -96,7 +96,8 @@ Slice 3 depends on this. A topology record must name exactly what ran, which is 
 | 0 Groundwork | Done, 16 November 2026. Tag `mlp/102` pushed |
 | 1 Addressing | Done, 17 November 2026. `:addressing` built to spec 01; the inventory, governor and app resolve through it |
 | 2 Envelope and uniform access | Done, 23 November 2026. `:envelope` and `:access` built to spec 02; every pricing-calc call goes through `invoke`; Java speaks the envelope, Python is reached through an adapter that records its timings |
-| 3 to 6 | Not started |
+| 3 Topology | Done, 24 November 2026. `:topology` built to spec 03; every call records the topology it ran on, addressed by a hash of its content; instances are declared in `instances.yaml`; services report themselves on `/meta`, and a table that routes to the wrong instance is refused |
+| 4 to 6 | Not started |
 
 ## Slice 0 brief
 
@@ -254,7 +255,7 @@ A handover for doing slice 2 in Claude Code. Read the slice 2 decisions under "D
 
 ## Slice 3 brief
 
-A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "Decided" first. **Draft, 23 November 2026.** The shape is settled with Stephen; spec 03 comes next (step 0).
+A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "Decided" first. **Settled, 24 November 2026**, with spec 03.
 
 **Goal:** every call leaves a fixed record of exactly what ran, so `/evidence` can show the topology behind any mismatch. The tour behaves as before: same stages, same numbers, same addresses and stage files.
 
@@ -262,7 +263,7 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 
 ### Step 0: spec
 
-1. **Drafted, 24 November 2026.** Spec "03 - Topology" in The Knowledge (`realising/specs/`), from the note above and this brief. Settle it with Stephen before building. It builds on spec 01 (instances) and spec 02 (causation).
+1. **Done, 24 November 2026.** Spec "03 - Topology" in The Knowledge (`realising/specs/`), from the note above and this brief, settled with Stephen. It builds on spec 01 (instances) and spec 02 (causation).
 
 ### The shape
 
@@ -273,22 +274,22 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 3. **A call record names its topology.** One line per call: the call's envelope id, its `causedBy`, the table generation, the topology's address, and the timestamp. The topology itself is written once, the first time it is seen. This is how "causation links to a topology record" works: the record holds the envelope id, so nothing extra rides in the envelope.
 4. **Instances in text.** **Settled:** no new address syntax. An instance is written as a small JSON object, `{"identity", "realises", "host"}`, with `realises` as a canonical address and `host` as the host's identity. PURL has nowhere for "realises" or "host" (discussion item 7), and this avoids inventing a form before one is needed.
 5. **Instances are declared before they appear (spec 01, section 8).** **Settled:** the system allocates an identity when it declares an instance, not when the instance turns up.
-   - `amorphic-demo-env/instances.yaml` (checked in, beside the catalogue; the inventory's half of it) declares each instance: its `identity`, the address it `realises`, and its `handle` (the binding URL). For example `java-pricing-2.1` realises `pkg:amorphic/pricing-calc@2.1?lang=java` at `http://java-pricing:8080`. Java 2.0 and 2.1 are two declared instances behind the same URL, which is how the demo swaps them.
-   - The app is declared too (`demo-app`, realising `pkg:amorphic/demo-app@0.1`, added to the catalogue). A folded-in core is a part of it: `Instance.part(app, "pricing-calc")`.
+   - `amorphic-demo-env/instances.yaml` (checked in, beside the catalogue; the inventory's half of it) declares each instance: its `identity`, the address it `realises`, and its `handle` (the binding URL). For example `java-pricing-v2.1` realises `pkg:amorphic/pricing-calc@2.1?lang=java` at `http://java-pricing:8080`. Java 2.0 and 2.1 are two declared instances behind the same URL, which is how the demo swaps them.
+   - The app is declared too: `demo-app-remote` and `demo-app-foldin`, one per build, realising `pkg:amorphic/demo-app@0.1?lang=java`, and `demo-app-dev` for running from a checkout. A folded-in core is a part of it: `Instance.part(app, "pricing-calc")`. *As built:* the app's address is not added to the catalogue yet, so the inventory's output is unchanged.
    - `./demo` allocates nothing. It deploys what is declared and passes each service its declared identity (`AMORPHIC_INSTANCE`). The image id is a property of the instance (what it was built from), not its identity, so redeploying the same image keeps the same instance.
    - **Appearing without a declaration** is allowed only where the catalogue says so: one setting, `accept-undeclared` (false in the demo). When it is true, the thing is recorded as *undeclared*, with what it reported, and is never given a made-up identity. This is the thin form of a namespace configured to accept that pattern.
 
 ### The handshake
 
 6. **A service says who it is: `GET /meta`.** Java and Python both gain it. It returns the instance as JSON (point 4): `identity` from `AMORPHIC_INSTANCE`, and `realises` from the code itself (the core's own version), so a lingering 2.0 can't claim to be 2.1 even if it is mislabelled. `/health` stays as it is. Python's `/convert` is untouched.
-7. **Checked when a table is applied, and at startup.** For each remote role, the app reads `/meta` and checks that the service realises the routed address and that its identity is declared for that handle. A mismatch refuses the table, naming both sides, for example: "routed to `pricing-calc@2.1`, but `http://java-pricing:8080` is `java-pricing-2.0`, which realises `pricing-calc@2.0`". No silent fallback (spec 01, section 7). `./demo` waits until `/meta` reports what it deployed before it applies a table.
+7. **Checked when a table is applied, and at startup.** For each remote role, the app reads `/meta` and checks that the service realises the routed address and that its identity is declared for that handle. A mismatch refuses the table, naming both sides, for example: "routed to `pricing-calc@2.1`, but `http://java-pricing:8080` is `java-pricing-v2.0`, which realises `pricing-calc@2.0`". No silent fallback (spec 01, section 7). `./demo` waits until `/meta` reports what it deployed before it applies a table.
 8. **Checked on every call where the service speaks the envelope.** Java's reply carries an extra `instance` aspect (`pkg:schema/instance@1.0`, built in; spec 02 allows extra aspects). The topology records who actually answered, not who was expected. A container swapped between calls shows up as a different topology, so evidence keeps it apart. The adapter path (Python) has the handshake only.
 
 ### What goes in `amorphic-systems/`
 
 9. **`:envelope`** gains the built-in `pkg:schema/instance@1.0` and `InstanceJson`, the text form in point 4, read and written at the edges.
 10. **`:access`** gains `Meta.read(url)`: `GET {url}/meta` into an `Instance`, over the same HTTP/1.1 client.
-11. **`:inventory-core`** gains `Instances`: loads `instances.yaml` and answers "what is declared for this handle and address?" `Catalogue` gains `acceptUndeclared`. The inventory's snapshot lists declared instances beside what it observes.
+11. **`:inventory-core`** gains `Instances`: loads `instances.yaml` and answers "what is declared for this handle and address?" `Catalogue` gains `acceptUndeclared`. *As built:* the inventory's snapshot doesn't list the declared instances yet; `Handshake` (the check in point 7) lives here instead.
 12. **`:topology`** (`amorphic-systems/topology`, package `dev.amorphic.topology`). Depends on `:addressing`, `:envelope` and Jackson only.
    - `Topology` (caller, roles) with a content-hash `id()` and an `address()` (`pkg:topology/<name>?hash=<id>`), and `CallRecord` (envelope id, `causedBy`, generation, topology address, time).
    - `TopologyLog`: append-only JSON lines in one file. `record(call, topology)` writes the topology once and the call every time; `topology(address)` and `calls(address)` read back, and `topologies(name)` lists every topology under a broader address. It survives a restart: on start it reads the file to learn which topologies it has already written.
@@ -304,7 +305,7 @@ A handover for doing slice 3 in Claude Code. Read the slice 3 decisions under "D
 
 - `./gradlew build` and `./gradlew :amorphic-demo-app:bootJar -PfoldIn=true`; `checkFrameworkDependencies` passes with `:topology`.
 - `./demo tour` runs stages 0 to 4 with the same story.
-- At stage 1, `/evidence`'s `lastMismatch.topology` resolves through `/topology` to `java-pricing-2.0` as the shadow, by identity, not URL.
+- At stage 1, `/evidence`'s `lastMismatch.topology` resolves through `/topology` to `java-pricing-v2.0` as the shadow, by identity, not URL.
 - **A lingering 2.0:** with the Java 2.0 container still running, applying a table that shadows to 2.1 is refused, naming both sides.
 - **A swap between calls:** replacing the Java container behind a live table shows up as a new topology on the next call.
 - After `docker compose restart app`, the same topology address still resolves; redeploying the same image keeps the same instance.

@@ -4,8 +4,13 @@ import dev.amorphic.access.AdapterBinding;
 import dev.amorphic.access.AdapterSpec;
 import dev.amorphic.access.Invoker;
 import dev.amorphic.access.LocalBinding;
+import dev.amorphic.access.AccessException;
 import dev.amorphic.access.RemoteBinding;
 import dev.amorphic.addressing.Address;
+import dev.amorphic.addressing.Instance;
+import dev.amorphic.envelope.InstanceRef;
+import dev.amorphic.inventory.Handshake;
+import dev.amorphic.inventory.Instances;
 import dev.amorphic.addressing.Resolution;
 import dev.amorphic.addressing.Version;
 import dev.amorphic.inventory.Catalogue;
@@ -14,13 +19,43 @@ import java.util.Optional;
 /**
  * Turns an address-table binding into an {@link Invoker}, failing fast when it can't be honoured. The table says
  * where (local or remote, and the url); the catalogue says how a remote version is reached (it speaks the envelope,
- * or it is wrapped by an adapter) and lists the schemas.
+ * or it is wrapped by an adapter) and lists the schemas. The declarations say who should answer there.
  */
 final class Bindings {
 
     static final String CORE_CLASS = "dev.amorphic.pricing.PricingCalcCore";
 
+    /** The part name a folded-in core has inside the app (spec 01: the host's identity plus the part's name). */
+    static final String PART = "pricing-calc";
+
     private Bindings() {}
+
+    /**
+     * {@link #create} plus the handshake (spec 03, section 6): a remote role is asked who it is, and refused unless it
+     * realises the routed address and is declared for that handle (or the catalogue accepts undeclared instances). A
+     * local role is a part of the app itself.
+     */
+    static Bound bind(Address address, AddressTable.Binding binding, Catalogue catalogue, Instances instances,
+            Instance self, MetaReader meta) {
+        Invoker invoker = create(address, binding, catalogue);
+        if ("local".equals(binding.type())) {
+            return new Bound(invoker, null, InstanceRef.of(Instance.part(self, PART, address)), false);
+        }
+        InstanceRef reported;
+        try {
+            reported = meta.read(binding.url(), address);
+        } catch (AccessException e) {
+            throw new AddressTableException("routed to " + address + ", but can't ask " + binding.url()
+                    + " who it is: " + e.getMessage());
+        }
+        try {
+            Handshake.Outcome outcome = Handshake.check(binding.url(), address, reported, instances,
+                    catalogue.acceptsUndeclared());
+            return new Bound(invoker, binding.url(), outcome.instance(), outcome instanceof Handshake.Undeclared);
+        } catch (Handshake.Refused e) {
+            throw new AddressTableException(e.getMessage());
+        }
+    }
 
     static Invoker create(Address address, AddressTable.Binding binding, Catalogue catalogue) {
         if (binding == null || binding.type() == null) {

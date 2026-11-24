@@ -26,7 +26,7 @@ Some amounts convert to exactly half a penny, for example 10.02 GBP → 12.525 U
 | Command | What it does |
 |---|---|
 | `./demo tour [--no-pause]` | The whole story, stage 0 to 4, in about five minutes, narrated in plain words: who answered customers at each stage, what the checks found, and a summary at the end. Pauses between stages. The full output goes to `.run/tour.log`. |
-| `./demo stage <id> [--weight N]` | Bring up a stage: start the services it routes to and wait for their `/health`, print the address-table change, switch the app's routing **without a restart**, then stop services the new routing no longer uses. Only folding core in (stage 4) or out rebuilds the app. Every applied table starts a new evidence generation. |
+| `./demo stage <id> [--weight N]` | Bring up a stage: start the services it routes to and wait for their `/health` and for `/meta` to report the identity they were deployed with, print the address-table change, switch the app's routing **without a restart**, then stop services the new routing no longer uses. Only folding core in (stage 4) or out rebuilds the app. Every applied table starts a new evidence generation. |
 | `./demo apply <file>` | Push any address table to the running app. Routing only: it doesn't start or stop containers. A table the app can't honour is rejected and the current routing stays live. |
 | `./demo diff <from> <to>` | Show what the governor changes between two stages. |
 | `./demo quote <amount> [from] [to]` | One `/quote` call. |
@@ -529,6 +529,41 @@ Routing and health:
 
 `./demo quote 732.98` served 916.22 with the `local` binding, and `./demo tooling local` stopped the last tooling container.
 
+## Topology and the handshake
+
+Every call records **exactly what it ran on**: its topology (spec 03). A topology lists each role with the instance that actually answered, plus the caller (the app). Its identity is a hash of that content, and it has an address like everything else: `pkg:topology/pricing-calc?hash=…`. Calls that ran on the same shape share one topology, whatever the table generation. The records are appended to `.run/records/topology.jsonl`, so they survive an app restart; `./demo down` removes them.
+
+**Instances are declared first**, in `instances.yaml`: each one's identity (like a car's VIN), what it realises, and its handle. `./demo` passes each service its identity, and each service reports itself on `GET /meta`, taking what it realises from its own code. When a table is applied, the app asks every remote role who it is, and refuses the table if the answer isn't what the table routes to. Java's replies also say who answered, on every call, so a container swapped between calls shows up as a new topology.
+
+- `GET /topology?address=<topology address>`: one topology. With `pkg:topology/pricing-calc`, every topology recorded for pricing-calc.
+- `GET /topology/calls?address=<topology address>`: the calls that ran on it (envelope id, what caused it, generation, time).
+
+### Captured run (2026-11-24)
+
+Stage 1. The mismatch's topology names who was compared, by identity, not by URL:
+
+```console
+$ T=$(curl -s localhost:8080/evidence | jq -r '.comparisons[0].topology')
+$ curl -s --get localhost:8080/topology --data-urlencode "address=$T" | jq -c '.caller.identity, (.roles[] | {role, instance: .instance.identity})'
+"demo-app-remote"
+{"role":"champion","instance":"py-pricing-v1.0"}
+{"role":"shadow","instance":"java-pricing-v2.0"}
+```
+
+Stage 1b, with a Java 2.0 container started by hand behind the URL the table gives to 2.1 (`JAVA_VERSION=v2.0 docker compose up -d java-pricing`). The next calls run on a new topology that names 2.0 as the shadow, and applying the table again is refused:
+
+```console
+$ curl -s localhost:8080/evidence | jq -c '.comparisons[] | {topology: .topology[-12:], total, mismatches}'
+{"topology":"e19deaa10817","total":3,"mismatches":0}
+{"topology":"bbddec39d1b0","total":3,"mismatches":3}
+$ ./demo apply addresses/stage-1b.yaml
+The app rejected the table (HTTP 400):
+  routed to pkg:amorphic/pricing-calc@2.1?lang=java, but http://java-pricing:8080 is java-pricing-v2.0, which realises pkg:amorphic/pricing-calc@2.0?lang=java
+Still live (generation 1): champion=pkg:amorphic/pricing-calc@1.0?lang=python (remote), shadow=pkg:amorphic/pricing-calc@2.1?lang=java (remote)
+```
+
+After Java 2.1 was back and the app restarted, both topologies still resolved. The 2.1 one had 1203 calls: 1200 from the tour's stage 1b (generation 3) and 3 from this run (generation 1), because the generation is in each call record, not in the topology.
+
 ## `/evidence` shape
 
 `./demo gate` relies on this shape. `generation` is the address table generation the counts belong to.
@@ -550,12 +585,16 @@ Routing and health:
         "input": { "amount": "732.98", "from": "GBP", "to": "USD" },
         "servedValue": "916.22",
         "shadowValue": "916.23",
-        "shadowError": null
-      }
+        "shadowError": null,
+        "topology": "pkg:topology/pricing-calc?hash=db96586a…"
+      },
+      "topology": "pkg:topology/pricing-calc?hash=db96586a…"
     }
   ]
 }
 ```
+
+Each comparison is counted per topology (see [Topology and the handshake](#topology-and-the-handshake)): the exact instances compared, not just their addresses. `topology` is its address, which `/topology?address=` resolves.
 
 A comparison matches only when the two values are identical strings, so `12.5` and `12.50` count as a mismatch. A shadow that errors counts as a mismatch.
 
@@ -567,8 +606,9 @@ A comparison matches only when the two values are identical strings, so `12.5` a
 | `compose.yaml` | One compose file for all stages, including the inventory and governor services. `./demo` chooses which services run. |
 | `addresses/stage-*.yaml` | One address table per stage, with no comments, so `./demo diff` shows only the real change. |
 | `catalogue.yaml` | Every capability and tooling version, where it may run, and whether it is withdrawn or planned. Edited by hand; read on every inventory observation. |
+| `instances.yaml` | Every instance the system declares before it runs: its identity, what it realises, and its handle. Edited by hand; read whenever a table is applied. |
 | `governor-rules.yaml` | The governor's rule table, tried in order. Edited by hand; read on every proposal. |
 | `golden/vectors.json` | Shared contract test cases (rates, inputs, expected HALF_EVEN results). |
 | `traffic/edge-inputs.txt` | Half-penny inputs where HALF_UP and HALF_EVEN disagree. |
 | `scripts/traffic.sh`, `scripts/gate.sh`, `scripts/tour.sh` | The load generator, the evidence gate and the narrated tour. |
-| `.run/` | The active stage, its rendered address table, and the tooling entries `./demo` adds to every table (`tooling.yaml`). Gitignored. |
+| `.run/` | The active stage, its rendered address table, the tooling entries `./demo` adds to every table (`tooling.yaml`), and the topology log (`records/topology.jsonl`). Gitignored; `./demo down` removes it. |

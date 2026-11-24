@@ -13,7 +13,12 @@
 #              envelope (POST /invoke); via: adapter means the app wraps its plain API, as the adapter says
 #
 # schemas, at the end, lists the schemas the envelopes' payloads follow, each by address and file.
-# The framework's own schemas (envelope, causation, error) are built in and need no entry.
+# The framework's own schemas (envelope, causation, error, instance) are built in and need no entry.
+#
+# accept-undeclared says whether an instance may answer without being declared in instances.yaml
+# first. If false, routing to one is refused; if true, it is recorded as undeclared (spec 03).
+accept-undeclared: false
+
 capabilities:
   pricing-calc:
     kind: capability

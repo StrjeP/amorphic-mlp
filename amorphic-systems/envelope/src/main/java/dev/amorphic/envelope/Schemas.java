@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
- * The framework's own schemas, shipped in this jar: the two envelope purposes, causation and error. Each is a JSON
+ * The framework's own schemas, shipped in this jar: the two envelope purposes, causation, error and instance. Each is a JSON
  * Schema file named after its address. A catalogue lists these alongside its own.
  */
 public final class Schemas {
@@ -18,7 +18,8 @@ public final class Schemas {
             Envelope.REQUEST, "schemas/request-1.0.json",
             Envelope.REPLY, "schemas/reply-1.0.json",
             Envelope.CAUSATION_SCHEMA, "schemas/causation-1.0.json",
-            Envelope.ERROR_SCHEMA, "schemas/error-1.0.json");
+            Envelope.ERROR_SCHEMA, "schemas/error-1.0.json",
+            InstanceRef.SCHEMA, "schemas/instance-1.0.json");
 
     private Schemas() {}
 

@@ -30,3 +30,22 @@ def test_invalid_amount_is_400():
 
 def test_health():
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_meta_says_who_this_is(monkeypatch):
+    monkeypatch.setenv("AMORPHIC_INSTANCE", "py-pricing-1.0")
+    r = client.get("/meta")
+    assert r.status_code == 200
+    assert r.json() == {
+        "identity": "py-pricing-1.0",
+        "realises": "pkg:amorphic/pricing-calc@1.0?lang=python",
+        "host": None,
+    }
+
+
+def test_meta_without_a_declared_identity_is_503(monkeypatch):
+    monkeypatch.delenv("AMORPHIC_INSTANCE", raising=False)
+    r = client.get("/meta")
+    assert r.status_code == 503
+    assert "AMORPHIC_INSTANCE" in r.json()["error"]
+
