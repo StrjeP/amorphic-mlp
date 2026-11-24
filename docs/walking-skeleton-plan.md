@@ -330,7 +330,7 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 
 ### Step 0: spec
 
-1. Spec "04 - Composition" in The Knowledge (`realising/specs/`), drafted from this brief and settled with Stephen before building. It builds on spec 01 (addresses), spec 02 (causation) and spec 03 (a topology covers a whole plan).
+1. **Drafted, 24 November 2026.** Spec "04 - Composition" in The Knowledge (`realising/specs/`), from this brief and the composition notes; to settle with Stephen before building. It builds on spec 01 (addresses), spec 02 (causation) and spec 03 (a topology covers a whole plan).
 
 ### The account report
 
@@ -350,7 +350,7 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 ### The composer
 
 5. **Outcomes are addressed.** **Settled:** their own kind, `pkg:outcome/quote@1.0` and `pkg:outcome/account-value@1.0`. An outcome is what a caller asks for, not a capability that runs, so the kinds stay apart. The topology is named after the outcome (`pkg:topology/account-value?hash=…`, spec 03, section 3). Spec 01's list of kinds (section 4.1) gains `outcome`.
-6. **Recipes live in the catalogue.** Each outcome lists its steps; each step names a capability address and where its input comes from. One fan-out form, "for each item of an earlier step's output", and one reduce step, the sum. This is a fixed recipe, not a planner: there is no choosing between recipes and no cost model. **Settled:** the sum is its own local capability, `pkg:amorphic/sum@1.0`, so every step is an addressed `invoke`, appears in the topology, and could be swapped like any other.
+6. **Recipes live in the catalogue.** Each outcome lists its steps; each step names a capability address and where its input comes from. One fan-out form, "for each item of an earlier step's output", with a pass-through: items meeting one stated condition (a field equal to a value from the outcome's input, such as the currency) go on unchanged with no call. Then one reduce step, the sum. This is a fixed recipe, not a planner: there is no choosing between recipes and no cost model. **Settled:** the sum is its own local capability, `pkg:amorphic/sum@1.0`, so every step is an addressed `invoke`, appears in the topology, and could be swapped like any other.
 7. **Each step goes through what's there today.** A convert step is resolved and routed exactly as now: the address table, champion, shadow, canary, the handshake and evidence. The composer doesn't know about stages.
 8. **Routing is decided once per plan.** **Settled:** at the canary stage, the champion is chosen once when a plan starts, and all of its conversions go there. A report is answered by one consistent set of resources and runs on one topology, like a prepared query (spec 03). A quote is a one-step plan, so it behaves as today.
 9. **Causation.** The outcome request has its own envelope id. Each step's envelope names it as `causedBy`, so from a report you can reach every call it made, and from any call the report that caused it.
@@ -378,7 +378,7 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 ### Not in slice 4
 
 - Choosing between recipes, planning by cost or value, and the Concierge.
-- Recipes beyond one fan-out and one reduce; conditional steps.
+- Recipes beyond one fan-out and one reduce; conditional steps other than the fan-out's pass-through.
 - Attaching new demands to running work (DAG Amortisation).
 - Evidence or a governor gate on whole outcomes. Evidence stays per call.
 - Writes: the positions are read only.
