@@ -335,7 +335,7 @@ A handover for doing slice 4 in Claude Code. Read the slice 4 decisions under "D
 ### The account report
 
 2. **The outcome.** `GET /accounts/{account}/value?currency=USD` returns the account's value in one currency, with each position's converted amount, who converted it, and the total.
-3. **The positions.** A new capability, `pkg:amorphic/positions@1.0`, returns an account's holdings: amount and currency for each. In the demo it is a local handler in the app, reading `amorphic-demo-env/accounts.yaml` (checked in). It is always local, so it needs no service, no stage files and no handshake. *To settle:* local only, or also a small service so the plan crosses two services.
+3. **The positions.** A new capability, `pkg:amorphic/positions@1.0`, returns an account's holdings: amount and currency for each. In the demo it is a local handler in the app, reading `amorphic-demo-env/accounts.yaml` (checked in). It is always local, so it needs no service, no stage files and no handshake. **Settled:** local only. The plan still uses two capabilities; making positions a service is for later.
 4. **The sample account.** Chosen so the half-penny case lands in the total:
 
    | Position | Amount | In USD (Python 1.0, Java 2.1) | Java 2.0 |
@@ -429,6 +429,7 @@ Found while checking the move: none of the four projects depends on a demo proje
 24 November 2026, slice 4:
 
 - **Composition depth.** One step doesn't show that composition is real (discussion item 2). The app gains an account report as a second outcome beside `/quote`, in the same app and on the same pricing services and stages: load an account's positions, convert each to USD, and sum them. That gives two capabilities in one plan, a fan-out, and causation from one request down to every call it made.
+- **Positions are local only.** `pkg:amorphic/positions@1.0` is a local handler in the app reading `accounts.yaml`: no service, stage files or handshake.
 
 ## For discussion
 
